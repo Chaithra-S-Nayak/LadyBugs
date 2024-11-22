@@ -5,6 +5,26 @@ version: "1"
 name: "Opportunity Summarizer"
 description: "Generate a summary report of opportunities within the specified timeframe."
 
+# keyrings reference: https://docs.devrev.ai/snap-ins/references/keyrings.
+keyrings:
+  organization:
+    - name: slack_api_token
+      display_name: Slack API Token
+      description: Token to authenticate with Slack API for organizational use.
+      types:
+        - secrets
+    - name: llm_api_token
+      display_name: LLM API Token
+      description: Token to authenticate with the shared LLM model.
+      types:
+        - secrets
+    - name: devrev_api_token
+      display_name: DevRev API Token
+      description: Token to authenticate with DevRev API for accessing opportunities, conversations, and tickets.
+      types:
+        - secrets
+
+
 # This is the name displayed in DevRev where the Snap-In takes actions using the token of this service account.
 service_account:
   display_name: DevRev Bot
@@ -14,12 +34,35 @@ service_account:
 # Add organization level inputs, reference: https://docs.devrev.ai/snap-ins/references/inputs.
 inputs:
   organization:
-    - name: sample_value
-      description: Sample input value.
+    - name: slack_api_token
+      description: Token to authenticate with Slack API.
       field_type: text
-      default_value: "primary"
+      is_required: true
+      default_value: ""
       ui:
-        display_name: Sample Value
+        display_name: Slack API Token
+    - name: default_slack_channel
+      description: Default Slack channel to post summaries.
+      field_type: text
+      is_required: false
+      default_value: "#general"
+      ui:
+        display_name: Default Slack Channel
+  user:
+    - name: timeframe
+      description: Time frame for analysis in hours (e.g., last 24 hours).
+      field_type: integer
+      is_required: true
+      default_value: 24
+      ui:
+        display_name: Time Frame (Hours)
+    - name: slack_channel
+      description: Slack channel where the summary will be posted.
+      field_type: text
+      is_required: false
+      default_value: ""
+      ui:
+        display_name: Slack Channel
 
 # Event source reference: https://docs.devrev.ai/snap-ins/references/event_sources#supported-event-source-types-and-their-event-types.
 event_sources:
