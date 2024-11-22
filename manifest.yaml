@@ -24,23 +24,33 @@ inputs:
 # Event source reference: https://docs.devrev.ai/snap-ins/references/event_sources#supported-event-source-types-and-their-event-types.
 event_sources:
   organization:
-    - name: devrev-event-source
-      description: Event source listening on DevRev events.
-      display_name: DevRev events listener
+    - name: devrev-webhook
+      description: Event coming from DevRev
+      display_name: Devrev
       type: devrev-webhook
       config:
         event_types:
-          - work_created
+          - work_updated
 
 # Functions reference: https://docs.devrev.ai/snap-ins/references/functions.
 functions:
-  - name: on_work_creation
-    description: function to trigger on work creation
+  - name: generate_report
+    description: function to trigger on /report command
+  - name: show_popup_message
+    description: Show a success message in the DevRev UI
 
-# Automations reference: https://docs.devrev.ai/snap-ins/concepts#automation.
-automations:
-  - name: handle-work-created-event
-    source: devrev-event-source
-    event_types:
-      - work_created
-    function: on_work_creation
+commands:
+  - name: report
+    namespace: devrev
+    description: Create a summary report of opportunities with charts.
+    surfaces:
+      - surface: discussions
+        object_types:
+          - opportunity
+    usage_hint: "[timeframe] [slack_channel] [chart_color]"
+    function: generate_report
+
+snap_kit_actions:
+  - name: show_success_popup
+    description: Show a success message in the DevRev UI
+    function: show_popup_message
