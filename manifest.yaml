@@ -8,26 +8,19 @@ description: "Logs a message when a work item is created"
 # keyrings reference: https://docs.devrev.ai/snap-ins/references/keyrings.
 keyrings:
   organization:
-    - name: llm_api_token
-      display_name: LLM API Token
-      description: API token for accessing the shared LLM model.
-      types:
-        - secrets
     - name: slack_api_token
       display_name: Slack API Token
       description: Token to authenticate with Slack API for organizational use.
       types:
         - secrets
-    - name: default_slack_channel
-      display_name: Default Slack Channel
-      description: Default channel where summaries will be posted for the organization.
+    - name: llm_api_token
+      display_name: LLM API Token
+      description: Token to authenticate with the shared LLM model.
       types:
         - secrets
-
-  user:
-    - name: slack_channel
-      display_name: Slack Channel
-      description: Slack channel where the user-specific summary will be posted.
+    - name: devrev_api_token
+      display_name: DevRev API Token
+      description: Token to authenticate with DevRev API for accessing opportunities, conversations, and tickets.
       types:
         - secrets
 
