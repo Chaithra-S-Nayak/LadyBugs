@@ -1,9 +1,9 @@
 # For reference: https://docs.devrev.ai/snap-ins/references/manifest.
 # Refactor the code based on your business logic.
 
-version: "2"
-name: "Work Tracker"
-description: "Logs a message when a work item is created"
+version: "1"
+name: "Opportunity Summarizer"
+description: "Generate a summary report of opportunities within the specified timeframe."
 
 # This is the name displayed in DevRev where the Snap-In takes actions using the token of this service account.
 service_account:
