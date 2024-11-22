@@ -151,3 +151,5 @@ devrev snap_in_version upgrade --force --manifest <PATH_TO_MANIFEST> --testing-u
 ```
 
 Do note that manifest must always be provided when upgrading a snap-in version.
+
+--------------------------------
