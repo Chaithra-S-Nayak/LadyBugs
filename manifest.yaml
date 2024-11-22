@@ -125,10 +125,6 @@ keyring_types:
       created_after: {timestamp}  # Optional: Specify a timestamp to filter by.
     description: "API for retrieving conversations from DevRev."
 
-
-
-
-
 # This is the name displayed in DevRev where the Snap-In takes actions using the token of this service account.
 service_account:
   display_name: DevRev Bot
