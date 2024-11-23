@@ -8,9 +8,15 @@ description: "Generate a summary report of opportunities within the specified ti
 # keyrings reference: https://docs.devrev.ai/snap-ins/references/keyrings.
 keyrings:
   organization:
-    - name: slack_api_token
-      display_name: Slack API Token
-      description: Token to authenticate with Slack API for organizational use.
+    organization:
+    - name: slack_oauth_token
+      display_name: Slack OAuth Token
+      description: OAuth token to authenticate Slack API requests for user authentication, channels, and messaging.
+      types:
+        - secrets
+    - name: slack_workspace
+      display_name: Slack Workspace
+      description: The Slack workspace related to the OAuth token.
       types:
         - secrets
     - name: llm_api_token
@@ -40,6 +46,7 @@ keyring_types:
         headers:
           Authorization: Bearer {llm_token} 
 
+  keyring_types:
   - id: slack_oauth_token
     name: Slack OAuth Token
     description: OAuth token for authenticating Slack API requests, including user authentication, getting channels, and posting messages.
@@ -53,31 +60,31 @@ keyring_types:
           name: Slack Workspace
           description: The Slack workspace related to the OAuth token.
           is_optional: false
-      token_verification:
-        url: https://slack.com/api/auth.test  
-        method: GET
-        headers:
-          Authorization: Bearer {slack_token}  
-        query_params:
-          workspace: {slack_workspace}  
-      post_message:
-        url: https://slack.com/api/chat.postMessage  
-        method: POST
-        headers:
-          Authorization: Bearer {slack_token} 
-        body:
-          channel: {slack_channel}  
-          text: {message_text}  
-        description: "API for posting messages to a Slack channel."
-      list_channels:
-        url: https://slack.com/api/conversations.list 
-        method: GET
-        headers:
-          Authorization: Bearer {slack_token}  
-        query_params:
-          limit: 100  # Optional: To limit the number of channels retrieved
-          types: public_channel, private_channel  # Optional: Specify channel types (public or private)
-        description: "API for listing all channels available in the Slack workspace."
+    token_verification:
+      url: https://slack.com/api/auth.test  
+      method: GET
+      headers:
+        Authorization: Bearer {slack_token}  
+      query_params:
+        workspace: {slack_workspace}  
+    post_message:
+      url: https://slack.com/api/chat.postMessage  
+      method: POST
+      headers:
+        Authorization: Bearer {slack_token} 
+      body:
+        channel: {slack_channel}  
+        text: {message_text}  
+      description: "API for posting messages to a Slack channel."
+    list_channels:
+      url: https://slack.com/api/conversations.list 
+      method: GET
+      headers:
+        Authorization: Bearer {slack_token}  
+      query_params:
+        limit: 100  # Optional: To limit the number of channels retrieved
+        types: public_channel, private_channel  # Optional: Specify channel types (public or private)
+      description: "API for listing all channels available in the Slack workspace."
 
   - id: devrev_api_token
   name: DevRev API Token
