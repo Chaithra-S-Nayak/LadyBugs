@@ -1,8 +1,8 @@
-import on_work_creation from './functions/on_work_creation';
+import generate_report from './functions/generate_report';
 
 export const functionFactory = {
   // Add your functions here
-  on_work_creation,
+  generate_report,
 } as const;
 
 export type FunctionFactoryType = keyof typeof functionFactory;

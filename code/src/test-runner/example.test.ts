@@ -1,4 +1,4 @@
-import { run } from '../functions/on_work_creation';
+import { run } from '../functions/generate_report';
 
 describe('Test some function', () => {
   it('Something', () => {
