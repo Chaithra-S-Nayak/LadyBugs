@@ -44,7 +44,7 @@ describe('Index Test Suite', () => {
       input_data: {
         timeframe: 24,
         configurations: {
-          default_channel: '#general',
+          default_channel: 'general',
         },
       },
       context: {
