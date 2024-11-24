@@ -51,6 +51,7 @@ const verifyChannel = async (channelName: string, slackClient: WebClient): Promi
     if (result.ok && result.channels) {
       // Check if the channel name exists in the list
       const channelExists = result.channels.some((channel) => channel.name === channelName);
+      console.log('Channel exists:', channelExists, 'Channel lists:', result.channels);
       return channelExists;
     } else {
       throw new Error('Failed to fetch channels list');
@@ -193,7 +194,7 @@ Provide the output in a well-structured, brief format. Avoid raw data and focus 
 };
 
 // Function to post summary to Slack
-async function postToSlack(summary: string, channel: string, slackToken: string, slackClient: WebClient) {
+async function postToSlack(summary: string, channel: string, slackClient: WebClient) {
   try {
     const response = await slackClient.chat.postMessage({
       channel: channel,
@@ -243,6 +244,7 @@ const generate_report = async (event: any) => {
 
     // Verify if channel is valid
     const isChannelValid = await verifyChannel(channel, slackClient);
+
     if (!isChannelValid) {
       throw new Error(`The channel ${channel} does not exist or is not accessible.`);
     }
@@ -258,8 +260,8 @@ const generate_report = async (event: any) => {
     const summary = await generateSummary(opportunities, llmApiKey);
 
     // Post summary to Slack
-    // const slackResponse = await postToSlack(summary, channel, slackToken, slackClient);
-    // console.log('Slack response:', slackResponse);
+    const slackResponse = await postToSlack(summary, channel, slackClient);
+    console.log('Slack response:', slackResponse);
   } catch (error) {
     console.error('Error generating report:', error);
     throw error;
