@@ -1,22 +1,12 @@
-# For reference: https://docs.devrev.ai/snap-ins/references/manifest.
-# Refactor the code based on your business logic.
-
 version: "1"
 name: "Opportunity Summarizer"
 description: "Generate a summary report of opportunities within the specified timeframe."
 
-# keyrings reference: https://docs.devrev.ai/snap-ins/references/keyrings.
 keyrings:
   organization:
-    organization:
     - name: slack_oauth_token
       display_name: Slack OAuth Token
       description: OAuth token to authenticate Slack API requests for user authentication, channels, and messaging.
-      types:
-        - secrets
-    - name: slack_workspace
-      display_name: Slack Workspace
-      description: The Slack workspace related to the OAuth token.
       types:
         - secrets
     - name: llm_api_token
@@ -24,130 +14,12 @@ keyrings:
       description: Token to authenticate with the shared LLM model.
       types:
         - secrets
-    - name: devrev_api_token
-      display_name: DevRev API Token
-      description: Token to authenticate with DevRev API for accessing opportunities, conversations, and tickets.
-      types:
-        - secrets
-# keyring_types reference: 
-keyring_types:
-  - id: llm_api_token
-    name: LLM API Token
-    description: API token for authenticating requests to the LLM service.
-    kind: "secret"
-    secret_config:
-      fields:
-        - id: llm_token
-          name: LLM API Token
-          description: The API token used to authenticate with the LLM service.
-      token_verification:
-        url: #  URL for LLM API token verification
-        method: POST
-        headers:
-          Authorization: Bearer {llm_token} 
 
-  keyring_types:
-  - id: slack_oauth_token
-    name: Slack OAuth Token
-    description: OAuth token for authenticating Slack API requests, including user authentication, getting channels, and posting messages.
-    kind: "secret"
-    secret_config:
-      fields:
-        - id: slack_token
-          name: Slack API Token
-          description: The OAuth token used to authenticate with Slack API for various actions.
-        - id: slack_workspace
-          name: Slack Workspace
-          description: The Slack workspace related to the OAuth token.
-          is_optional: false
-    token_verification:
-      url: https://slack.com/api/auth.test  
-      method: GET
-      headers:
-        Authorization: Bearer {slack_token}  
-      query_params:
-        workspace: {slack_workspace}  
-    post_message:
-      url: https://slack.com/api/chat.postMessage  
-      method: POST
-      headers:
-        Authorization: Bearer {slack_token} 
-      body:
-        channel: {slack_channel}  
-        text: {message_text}  
-      description: "API for posting messages to a Slack channel."
-    list_channels:
-      url: https://slack.com/api/conversations.list 
-      method: GET
-      headers:
-        Authorization: Bearer {slack_token}  
-      query_params:
-        limit: 100  # Optional: To limit the number of channels retrieved
-        types: public_channel, private_channel  # Optional: Specify channel types (public or private)
-      description: "API for listing all channels available in the Slack workspace."
-
-  - id: devrev_api_token
-  name: DevRev API Token
-  description: API token for authenticating with the DevRev API, used for retrieving tickets, opportunities, and conversations.
-  kind: "secret"
-  secret_config:
-    fields:
-      - id: devrev_token
-        name: DevRev API Token
-        description: The API token used to authenticate with DevRev API for data retrieval.
-  token_verification:
-    url: https://api.devrev.com/auth/verify 
-    method: GET
-    headers:
-      Authorization: Bearer {devrev_token}  
-    description: "Verify the DevRev API token to ensure it is valid."
-  get_opportunities:
-    url: https://api.devrev.com/v1/opportunities  
-    method: GET
-    headers:
-      Authorization: Bearer {devrev_token}  
-    query_params:
-      limit: 100  # Optional: Specify the limit of opportunities to retrieve.
-      owner: {owner_id}  # Optional: Specify the owner to filter by.
-      created_after: {timestamp}  # Optional: Specify a timestamp to filter by.
-    description: "API for retrieving opportunities from DevRev."
-  get_tickets:
-    url: https://api.devrev.com/v1/tickets  
-    method: GET
-    headers:
-      Authorization: Bearer {devrev_token}  
-    query_params:
-      limit: 100  # Optional: Specify the limit of tickets to retrieve.
-      owner: {owner_id}  # Optional: Specify the owner to filter by.
-      created_after: {timestamp}  # Optional: Specify a timestamp to filter by.
-    description: "API for retrieving tickets from DevRev."
-  get_conversations:
-    url: https://api.devrev.com/v1/conversations  
-    method: GET
-    headers:
-      Authorization: Bearer {devrev_token}  
-    query_params:
-      limit: 100  # Optional: Specify the limit of conversations to retrieve.
-      owner: {owner_id}  # Optional: Specify the owner to filter by.
-      created_after: {timestamp}  # Optional: Specify a timestamp to filter by.
-    description: "API for retrieving conversations from DevRev."
-
-# This is the name displayed in DevRev where the Snap-In takes actions using the token of this service account.
 service_account:
   display_name: DevRev Bot
 
-# Add any external connection, reference: https://docs.devrev.ai/snap-ins/concepts#connection.
-
-# Add organization level inputs, reference: https://docs.devrev.ai/snap-ins/references/inputs.
 inputs:
   organization:
-    - name: slack_api_token
-      description: Token to authenticate with Slack API.
-      field_type: text
-      is_required: true
-      default_value: ""
-      ui:
-        display_name: Slack API Token
     - name: default_slack_channel
       description: Default Slack channel to post summaries.
       field_type: text
@@ -155,39 +27,10 @@ inputs:
       default_value: "#general"
       ui:
         display_name: Default Slack Channel
-  user:
-    - name: timeframe
-      description: Time frame for analysis in hours (e.g., last 24 hours).
-      field_type: integer
-      is_required: true
-      default_value: 24
-      ui:
-        display_name: Time Frame (Hours)
-    - name: slack_channel
-      description: Slack channel where the summary will be posted.
-      field_type: text
-      is_required: false
-      default_value: ""
-      ui:
-        display_name: Slack Channel
 
-# Event source reference: https://docs.devrev.ai/snap-ins/references/event_sources#supported-event-source-types-and-their-event-types.
-event_sources:
-  organization:
-    - name: devrev-webhook
-      description: Event coming from DevRev
-      display_name: Devrev
-      type: devrev-webhook
-      config:
-        event_types:
-          - work_updated
-
-# Functions reference: https://docs.devrev.ai/snap-ins/references/functions.
 functions:
   - name: generate_report
     description: function to trigger on /report command
-  - name: show_popup_message
-    description: Show a success message in the DevRev UI
 
 commands:
   - name: report
@@ -199,8 +42,3 @@ commands:
           - opportunity
     usage_hint: "[timeframe] [slack_channel] [chart_color]"
     function: generate_report
-
-snap_kit_actions:
-  - name: show_success_popup
-    description: Show a success message in the DevRev UI
-    function: show_popup_message

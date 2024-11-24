@@ -1,58 +1,72 @@
-import { client, publicSDK } from '@devrev/typescript-sdk';
+import { betaSDK, client } from '@devrev/typescript-sdk';
 import { WebClient } from '@slack/web-api';
 import OpenAI from 'openai';
 
-// Main function to handle the event
-export async function generate_report(event: any) {
-  try {
-    // Step 1: Validate inputs
-    const devrevPAT = event.context.secrets['service_account_token'];
-    const slackToken = event.context.secrets['slack_api_token'];
-    const llmApiKey = event.context.secrets['llm_api_token'];
-    const APIBase = event.execution_metadata.devrev_endpoint;
-    const timeframe = event.input_data.timeframe || 24; // Default to 24 hours
-    const channel = event.input_data.configurations['default_channel'] || '#general';
-
-    if (!devrevPAT || !slackToken || !llmApiKey) {
-      throw new Error('Missing required secrets: service_account_token, slack_api_token, or llm_api_token.');
-    }
-
-    // Step 2: Initialize DevRev SDK
-    const devrevSDK = client.setup({
-      endpoint: APIBase,
-      token: devrevPAT,
-    });
-
-    // Step 3: Fetch closed and won opportunities
-    // const opportunities = await devrevSDK.worksList({
-    //   limit: 100,
-    //   type: [publicSDK.WorkType.Opportunity],
-    //   filters: {
-    //     status: 'closed-won',
-    //     updated_at: {
-    //       after: new Date(Date.now() - timeframe * 60 * 60 * 1000).toISOString(), // Timeframe in hours
-    //     },
-    //   },
-    // });
-
-    if (!opportunities) {
-      return 'No closed-won opportunities found in the specified timeframe.';
-    }
-
-    // Step 4: Generate summary using OpenAI
-    const summary = await generateSummary(opportunities, llmApiKey);
-
-    // Step 5: Post summary to Slack
-    const slackResponse = await postToSlack(summary, channel, slackToken);
-
-    return slackResponse;
-  } catch (error) {
-    console.error('Error handling event:', error);
-    throw error;
-  }
+interface Opportunity {
+  id: string;
+  name: string;
+  revenue: number;
 }
 
-async function generateSummary(opportunities: any[], llmApiKey: string): Promise<string> {
+interface OpenAIMessage {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+}
+
+const getParameters = (paramString: string): string[] => {
+  const paramList = paramString.split(' ');
+  if (paramList.length !== 3) {
+    throw new Error('Invalid Parameters');
+  }
+  const [timeframe, channel, color] = paramList;
+  return [timeframe, channel, color];
+};
+
+const verifyChannel = async (channelName: string, slackClient: WebClient): Promise<boolean> => {
+  try {
+    // Fetch the list of channels
+    let result;
+    try {
+      result = await slackClient.conversations.list();
+    } catch (error) {
+      console.error('Error fetching channels list:', error);
+      throw error;
+    }
+
+    if (result.ok && result.channels) {
+      // Check if the channel name exists in the list
+      const channelExists = result.channels.some((channel) => channel.name === channelName);
+      return channelExists;
+    } else {
+      throw new Error('Failed to fetch channels list');
+    }
+  } catch (error) {
+    console.error('Error verifying channel:', error);
+    throw error;
+  }
+};
+//--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+const getOpportunities = async (timeframe: number, devrevSDK: any): Promise<any[]> => {
+  try {
+    // Fetch closed and won opportunities
+    const opportunities = await devrevSDK.worksList({
+      limit: 100,
+      type: [betaSDK.WorkType.Opportunity],
+      filters: {
+        status: 'closed-won',
+        updated_at: {
+          after: new Date(Date.now() - timeframe * 60 * 60 * 1000).toISOString(),
+        },
+      },
+    });
+    return opportunities;
+  } catch (error) {
+    console.error('Error fetching opportunities:', error);
+    throw error;
+  }
+};
+
+const generateSummary = async (opportunities: Opportunity[], llmApiKey: string): Promise<string> => {
   try {
     const openai = new OpenAI({
       apiKey: llmApiKey,
@@ -67,10 +81,7 @@ async function generateSummary(opportunities: any[], llmApiKey: string): Promise
     }));
 
     // Create a prompt for OpenAI
-    const messages: Array<{
-      role: 'system' | 'user' | 'assistant';
-      content: string;
-    }> = [
+    const messages: OpenAIMessage[] = [
       {
         role: 'system',
         content:
@@ -105,13 +116,11 @@ Provide the output in a well-structured, brief format. Avoid raw data and focus 
     console.error('Error generating summary:', error);
     throw error;
   }
-}
+};
 
 // Function to post summary to Slack
-async function postToSlack(summary: string, channel: string, slackToken: string) {
+async function postToSlack(summary: string, channel: string, slackToken: string, slackClient: WebClient) {
   try {
-    const slackClient = new WebClient(slackToken);
-
     const response = await slackClient.chat.postMessage({
       channel: channel,
       text: `Opportunity Summary:\n${summary}`,
@@ -124,15 +133,47 @@ async function postToSlack(summary: string, channel: string, slackToken: string)
   }
 }
 
-// Main run function for handling events
+const generate_report = async (event: any) => {
+  // Step 1: Validate inputs
+  const devrevPAT = event.context.secrets['service_account_token'];
+  const slackToken = event.context.secrets['slack_api_token'];
+  const llmApiKey = event.context.secrets['llm_api_token'];
+  const endpoint = event.execution_metadata.devrev_endpoint;
+
+  if (!devrevPAT || !slackToken || !llmApiKey) {
+    throw new Error('Missing required secrets: service_account_token, slack_api_token, or llm_api_token.');
+  }
+
+  // Step 2: Initialize DevRev SDK
+  const devrevSDK = client.setup({
+    endpoint: endpoint,
+    token: devrevPAT,
+  });
+
+  const slackClient = new WebClient(slackToken);
+
+  const commandParams = event.payload['parameters'];
+  const [timeframe, channel, color] = getParameters(commandParams);
+
+  // Verify if channel is valid
+  const isChannelValid = await verifyChannel(channel, slackClient);
+  if (!isChannelValid) {
+    throw new Error(`The channel ${channel} does not exist.`);
+  }
+
+  // Fetch opportunities
+  const opportunities: Opportunity[] = await getOpportunities(parseInt(timeframe), devrevSDK);
+
+  // Generate summary
+  await generateSummary(opportunities, llmApiKey);
+
+  // Post summary to Slack
+  await postToSlack('Summary', channel, slackToken, slackClient);
+};
+
 export const run = async (events: any[]) => {
-  for (let event of events) {
-    try {
-      const result = await generate_report(event);
-      console.log('Event handled successfully:', result);
-    } catch (error) {
-      console.error('Failed to handle event:', error);
-    }
+  for (const event of events) {
+    await generate_report(event);
   }
 };
 
