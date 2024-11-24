@@ -1,6 +1,7 @@
 import { betaSDK, client } from '@devrev/typescript-sdk';
 import { WebClient } from '@slack/web-api';
 import OpenAI from 'openai';
+const axios = require('axios');
 
 interface Opportunity {
   id: string;
@@ -46,22 +47,41 @@ const verifyChannel = async (channelName: string, slackClient: WebClient): Promi
   }
 };
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-const getOpportunities = async (timeframe: number, devrevSDK: any): Promise<any[]> => {
+const getOpportunities = async (timeframe: number, devrevPAT: string): Promise<any[]> => {
   try {
-    // Fetch closed and won opportunities
-    const opportunities = await devrevSDK.worksList({
+    // Fetch opportunities
+    const endpoint = 'https://api.devrev.ai/works.list';
+    const params = {
       limit: 100,
-      type: [betaSDK.WorkType.Opportunity],
-      filters: {
-        status: 'closed-won',
-        updated_at: {
-          after: new Date(Date.now() - timeframe * 60 * 60 * 1000).toISOString(),
-        },
-      },
-    });
+      type: 'opportunity'
+      // Commenting out filters for now
+      // 'filters[opportunity.subtype]': 'closed-won', // Adjust this based on the correct filter parameter
+      // 'filters[updated_at][after]': new Date(Date.now() - timeframe * 60 * 60 * 1000).toISOString()
+    };
+
+    const headers = {
+      'Authorization': `eyJhbGciOiJSUzI1NiIsImlzcyI6Imh0dHBzOi8vYXV0aC10b2tlbi5kZXZyZXYuYWkvIiwia2lkIjoic3RzX2tpZF9yc2EiLCJ0eXAiOiJKV1QifQ.eyJhdWQiOlsiamFudXMiXSwiYXpwIjoiZG9uOmlkZW50aXR5OmR2cnYtaW4tMTpkZXZvLzJHSWxVbGo3RkY6ZGV2dS8yIiwiZXhwIjoxNzYzOTc4ODI3LCJodHRwOi8vZGV2cmV2LmFpL2F1dGgwX3VpZCI6ImRvbjppZGVudGl0eTpkdnJ2LXVzLTE6ZGV2by9zdXBlcjphdXRoMF91c2VyL2dvb2dsZS1vYXV0aDJ8MTA5NDAyMjA4MzU2OTI5NTIwMDY0IiwiaHR0cDovL2RldnJldi5haS9hdXRoMF91c2VyX2lkIjoiZ29vZ2xlLW9hdXRoMnwxMDk0MDIyMDgzNTY5Mjk1MjAwNjQiLCJodHRwOi8vZGV2cmV2LmFpL2Rldm9fZG9uIjoiZG9uOmlkZW50aXR5OmR2cnYtaW4tMTpkZXZvLzJHSWxVbGo3RkYiLCJodHRwOi8vZGV2cmV2LmFpL2Rldm9pZCI6IkRFVi0yR0lsVWxqN0ZGIiwiaHR0cDovL2RldnJldi5haS9kZXZ1aWQiOiJERVZVLTIiLCJodHRwOi8vZGV2cmV2LmFpL2Rpc3BsYXluYW1lIjoibm5tMjJjYzAxMSIsImh0dHA6Ly9kZXZyZXYuYWkvZW1haWwiOiJubm0yMmNjMDExQG5tYW1pdC5pbiIsImh0dHA6Ly9kZXZyZXYuYWkvZnVsbG5hbWUiOiJOTk0yMkNDMDExIENIQUlUSFJBIFMgTkFZQUsiLCJodHRwOi8vZGV2cmV2LmFpL2lzX3ZlcmlmaWVkIjp0cnVlLCJodHRwOi8vZGV2cmV2LmFpL3Rva2VudHlwZSI6InVybjpkZXZyZXY6cGFyYW1zOm9hdXRoOnRva2VuLXR5cGU6cGF0IiwiaWF0IjoxNzMyNDQyODI3LCJpc3MiOiJodHRwczovL2F1dGgtdG9rZW4uZGV2cmV2LmFpLyIsImp0aSI6ImRvbjppZGVudGl0eTpkdnJ2LWluLTE6ZGV2by8yR0lsVWxqN0ZGOnRva2VuL3cxYjFoZnBtIiwib3JnX2lkIjoib3JnX0t0U3F1elNtd3AwVnluaUgiLCJzdWIiOiJkb246aWRlbnRpdHk6ZHZydi1pbi0xOmRldm8vMkdJbFVsajdGRjpkZXZ1LzIifQ.pnFsZ9SS4iqZ4UbFNSLR27uFKJHRNP60OvWVmk83QMjg4y_LjWOa9srRaoxmKSTJGYrQo4FXnLICX5Fog6KuLHqYXbrfTTPhqJjgxBoTq_7lYxz_eAY0aaY7RC04GVu_h3O1qrFI53bFPw7TDIWAhckxqHSFbEC9o3h4CGSJhwfCz5_PI-uj_sCB--2Hiq591SCBjYUrGXvO_Hl4wTS6Y_NmuMD6booOEz3U5nToKxIVR9u97Ad1kZv0EcPsIP_wQlFHmmA1C-_VPJfnAUkPt2YbBrmDud3Cy1X279Qi1dRx2_5xqfduRtUGDNlHPBAa6nMheFgE1mO2SYMoRGrfcQ`, 
+      'Accept': 'application/json',
+      'User-Agent': 'axios/1.7.7'
+    };
+
+    const response = await axios.get(endpoint, { params, headers });
+    const data = response.data;
+
+    // Log the response to understand its structure
+    console.log('API Response:', data);
+
+    // Extract opportunities from the response
+    const opportunities = data.works;
+
+    // Ensure opportunities is an array
+    if (!Array.isArray(opportunities)) {
+      throw new Error('Expected an array of opportunities');
+    }
+
     return opportunities;
   } catch (error) {
-    console.error('Error fetching opportunities:', error);
+    console.error('Error fetching opportunities:');
     throw error;
   }
 };
@@ -134,41 +154,62 @@ async function postToSlack(summary: string, channel: string, slackToken: string,
 }
 
 const generate_report = async (event: any) => {
-  // Step 1: Validate inputs
-  const devrevPAT = event.context.secrets['service_account_token'];
-  const slackToken = event.context.secrets['slack_api_token'];
-  const llmApiKey = event.context.secrets['llm_api_token'];
-  const endpoint = event.execution_metadata.devrev_endpoint;
+  try {
+    // Step 1: Validate inputs
+    const devrevPAT = event.context.secrets['service_account_token'];
+    const slackToken = event.context.secrets['slack_api_token'];
+    const llmApiKey = event.context.secrets['llm_api_token'];
+    const endpoint = event.execution_metadata.devrev_endpoint;
 
-  if (!devrevPAT || !slackToken || !llmApiKey) {
-    throw new Error('Missing required secrets: service_account_token, slack_api_token, or llm_api_token.');
+    if (!devrevPAT || !slackToken || !llmApiKey) {
+      throw new Error('Missing required secrets: service_account_token, slack_api_token, or llm_api_token.');
+    }
+
+    // Step 2: Initialize DevRev SDK
+    const devrevSDK = client.setup({
+      endpoint: endpoint,
+      token: devrevPAT,
+    });
+
+    const slackClient = new WebClient(slackToken);
+
+    // Validate command parameters
+    const commandParams = event.payload['parameters'];
+    if (!commandParams) {
+      throw new Error('No parameters provided in the event payload.');
+    }
+
+    const [timeframeRaw, channelRaw, color] = getParameters(commandParams.trim());
+    const timeframe = parseInt(timeframeRaw.trim());
+    const channel = channelRaw.trim();
+
+    if (isNaN(timeframe) || timeframe <= 0) {
+      throw new Error('Invalid timeframe provided.');
+    }
+
+    // Verify if channel is valid
+    const isChannelValid = await verifyChannel(channel, slackClient);
+    if (!isChannelValid) {
+      throw new Error(`The channel ${channel} does not exist or is not accessible.`);
+    }
+
+    // Fetch opportunities
+    const opportunities: Opportunity[] = await getOpportunities(timeframe, devrevPAT);
+
+    if (!opportunities || opportunities.length === 0) {
+      throw new Error(`No opportunities found in the last ${timeframe} hours.`);
+    }
+
+    // Generate summary
+    const summary = await generateSummary(opportunities, llmApiKey);
+
+    // Post summary to Slack
+    const slackResponse = await postToSlack(summary, channel, slackToken, slackClient);
+    console.log('Slack response:', slackResponse);
+  } catch (error) {
+    console.error('Error generating report:', error);
+    throw error;
   }
-
-  // Step 2: Initialize DevRev SDK
-  const devrevSDK = client.setup({
-    endpoint: endpoint,
-    token: devrevPAT,
-  });
-
-  const slackClient = new WebClient(slackToken);
-
-  const commandParams = event.payload['parameters'];
-  const [timeframe, channel, color] = getParameters(commandParams);
-
-  // Verify if channel is valid
-  const isChannelValid = await verifyChannel(channel, slackClient);
-  if (!isChannelValid) {
-    throw new Error(`The channel ${channel} does not exist.`);
-  }
-
-  // Fetch opportunities
-  const opportunities: Opportunity[] = await getOpportunities(parseInt(timeframe), devrevSDK);
-
-  // Generate summary
-  await generateSummary(opportunities, llmApiKey);
-
-  // Post summary to Slack
-  await postToSlack('Summary', channel, slackToken, slackClient);
 };
 
 export const run = async (events: any[]) => {
