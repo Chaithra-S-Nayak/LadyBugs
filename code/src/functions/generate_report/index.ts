@@ -1,6 +1,9 @@
 import { betaSDK, client } from '@devrev/typescript-sdk';
 import { WebClient } from '@slack/web-api';
 import OpenAI from 'openai';
+import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import prettier from 'prettier';
+
 const axios = require('axios');
 
 interface Opportunity {
@@ -193,23 +196,141 @@ Provide the output in a well-structured, brief format. Avoid raw data and focus 
   }
 };
 
-// Function to post summary to Slack
-async function postToSlack(summary: string, channel: string, slackClient: WebClient) {
-  try {
-    const response = await slackClient.chat.postMessage({
-      channel: channel,
-      text: `Opportunity Summary:\n${summary}`,
-    });
 
-    return response;
+const createPDFReport = async (beautifiedSummary: string): Promise<Uint8Array> => {
+  // Create a new PDF document
+  const pdfDoc = await PDFDocument.create();
+  
+  // Add a page to the PDF
+  const page = pdfDoc.addPage([600, 800]); // Adjust the size to your needs
+  const { width, height } = page.getSize();
+
+  // Embed a standard font
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+  // Add a header to the PDF
+  page.drawText('Business Opportunities Report', {
+    x: 50,
+    y: height - 50,
+    font,
+    size: 16,
+    color: rgb(0, 0, 0),
+  });
+
+  // Add the beautified summary text
+  // To fit the text inside the PDF, we will break it into smaller lines (to avoid overflow).
+  const margin = 50;
+  const maxWidth = width - 2 * margin;
+  const textHeight = 12; // Set line height for text
+  let yPosition = height - 80; // Starting Y position after the header
+
+  const lines = beautifiedSummary.split('\n');
+  for (const line of lines) {
+    if (yPosition - textHeight < 50) break; // Stop if we reach bottom of the page
+
+    const lineWidth = font.widthOfTextAtSize(line, 12); // Calculate line width
+    const adjustedLine = lineWidth > maxWidth ? splitText(line, font, maxWidth) : [line];
+
+    for (const textLine of adjustedLine) {
+      page.drawText(textLine, {
+        x: margin,
+        y: yPosition,
+        font,
+        size: 12,
+        color: rgb(0, 0, 0),
+      });
+      yPosition -= textHeight; // Move down for the next line
+    }
+  }
+
+  // Save the PDF document to bytes
+  const pdfBytes = await pdfDoc.save();
+  return pdfBytes;
+};
+
+// Helper function to split text into multiple lines if it exceeds the max width
+const splitText = (text: string, font: any, maxWidth: number): string[] => {
+  const words = text.split(' ');
+  const lines: string[] = [];
+  let currentLine = '';
+
+  for (const word of words) {
+    const testLine = currentLine ? `${currentLine} ${word}` : word;
+    const testLineWidth = font.widthOfTextAtSize(testLine, 12);
+
+    if (testLineWidth <= maxWidth) {
+      currentLine = testLine; // Add word to current line
+    } else {
+      if (currentLine) lines.push(currentLine); // Push the current line to lines
+      currentLine = word; // Start new line with the word
+    }
+  }
+
+  if (currentLine) lines.push(currentLine); // Push the last line
+  return lines;
+};
+
+// Function to beautify the summary (remove unnecessary markdown)
+const beautifySummary = (summary: string): string => {
+  // Remove Markdown headers, bold, and other unnecessary elements
+  const cleanedSummary = summary
+    .replace(/(#+\s?)/g, '')  // Remove Markdown headers (e.g., # Header)
+    .replace(/\*\*(.*?)\*\*/g, '$1')  // Remove bold (**text** becomes text)
+    .replace(/\*(.*?)\*/g, '$1')  // Remove italic (*text* becomes text)
+    .replace(/__([^_]+)__/g, '$1')  // Remove bold underscores (__text__ becomes text)
+    .replace(/_(.*?)_/g, '$1')  // Remove italic underscores (_text_ becomes text)
+    .replace(/`([^`]+)`/g, '$1');  // Remove inline code (`text` becomes text)
+
+  // Prettify the cleaned summary (optional: adjust according to your needs)
+  return prettier.format(cleanedSummary, { parser: 'markdown' });
+};
+
+async function uploadFileToSlack(pdfBytes: Uint8Array, channelName: string, slackClient: WebClient) {
+  try {
+    const channelId = await getChannelIdByName(channelName ,slackClient);
+    if (!channelId) {
+      throw new Error(`Channel ID for ${channelName} not found.`);
+    }
+    await slackClient.conversations.join({ channel: channelId });
+    const buffer = Buffer.from(pdfBytes); // Define the buffer variable
+    const response = await slackClient.files.uploadV2({
+      channels: channelId,  // Ensure this is the channel ID
+      file: buffer,
+      filename: 'Business_Opportunities_Report.pdf',
+      filetype: 'pdf',
+      title: 'Business Opportunities Report',
+    });
+    console.log('File uploaded:', response);
+  } catch (error: any) { // Type the error object
+    console.error('Error uploading file:', error.response?.data || error.message);
+    throw error;
+  }
+  
+}
+
+async function getChannelIdByName(channelName : string, slackClient : WebClient) {
+  try {
+    const response = await slackClient.conversations.list();
+    if (response.ok) {
+      // Find the channel by its name
+      const channel = response.channels?.find(c => c.name === channelName);
+      if (channel) {
+        return channel.id; // Return the channel ID
+      } else {
+        throw new Error(`Channel "${channelName}" not found.`);
+      }
+    } else {
+      throw new Error('Failed to fetch channel list.');
+    }
   } catch (error) {
-    console.error('Error posting to Slack:', error);
+    console.error('Error fetching channel ID:', error);
     throw error;
   }
 }
 
+//--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 const generate_report = async (event: any) => {
-  try {
+
     // Step 1: Validate inputs
     const devrevPAT = event.context.secrets['service_account_token'];
     const slackToken = event.context.secrets['slack_api_token'];
@@ -236,8 +357,9 @@ const generate_report = async (event: any) => {
 
     const [timeframeRaw, channelRaw, color] = getParameters(commandParams.trim());
     const timeframe = parseInt(timeframeRaw.trim());
-    const channel = channelRaw.trim();
+    const channel = channelRaw.trim() ;
 
+    console.log('Timeframe:', timeframe, 'Channel:', channel, 'Color:', color);
     if (isNaN(timeframe) || timeframe <= 0) {
       throw new Error('Invalid timeframe provided.');
     }
@@ -256,16 +378,25 @@ const generate_report = async (event: any) => {
       throw new Error(`No opportunities found in the last ${timeframe} hours.`);
     }
 
-    // Generate summary
-    const summary = await generateSummary(opportunities, llmApiKey);
 
-    // Post summary to Slack
-    const slackResponse = await postToSlack(summary, channel, slackClient);
-    console.log('Slack response:', slackResponse);
-  } catch (error) {
-    console.error('Error generating report:', error);
-    throw error;
-  }
+    try {
+      // Generate summary (from previous code or API)
+      const summary = await generateSummary(opportunities, llmApiKey);
+      
+      // Beautify the summary
+      const beautifiedSummary = beautifySummary(summary);
+      console.log(beautifiedSummary);
+      
+      // Create the PDF report
+      const pdfBytes = await createPDFReport(beautifiedSummary);
+      
+      // Upload the generated PDF to Slack
+      const slackResponse = await uploadFileToSlack(pdfBytes, channel, slackClient);
+      console.log('Slack response:', slackResponse);
+    } catch (error) {
+      console.error('Error generating and uploading report:', error);
+      throw error;
+    }
 };
 
 export const run = async (events: any[]) => {
