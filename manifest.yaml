@@ -66,6 +66,10 @@ keyrings:
 functions:
   - name: generate_report
     description: Function to trigger on /report command
+    config:
+      runtime:
+        max_retries: 2 # number of retries before failing the event
+        min_interval: 120 #
 
 commands:
   - name: report

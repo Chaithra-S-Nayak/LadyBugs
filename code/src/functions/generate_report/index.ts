@@ -1,4 +1,5 @@
 // import { betaSDK, client } from '@devrev/typescript-sdk';
+import { FunctionExecutionError } from '@devrev/typescript-sdk/dist/snap-ins/types';
 import { WebClient } from '@slack/web-api';
 import OpenAI from 'openai';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
@@ -96,7 +97,7 @@ const verifyChannel = async (channelName: string, slackClient: WebClient): Promi
     if (result.ok && result.channels) {
       // Check if the channel name exists in the list
       const channelExists = result.channels.some((channel) => channel.name === channelName);
-      // console.log('Channel exists:', channelExists, 'Channel lists:', result.channels);
+      console.info('Channel exists:', channelExists, 'Channel lists:', result.channels);
       return channelExists;
     } else {
       throw new Error('Failed to fetch channels list');
@@ -121,9 +122,10 @@ const getOpportunities = async (timeframe: number, devrevPAT: string): Promise<a
     };
 
     const headers = {
-      Authorization: `eyJhbGciOiJSUzI1NiIsImlzcyI6Imh0dHBzOi8vYXV0aC10b2tlbi5kZXZyZXYuYWkvIiwia2lkIjoic3RzX2tpZF9yc2EiLCJ0eXAiOiJKV1QifQ.eyJhdWQiOlsiamFudXMiXSwiYXpwIjoiZG9uOmlkZW50aXR5OmR2cnYtaW4tMTpkZXZvLzJHSWxVbGo3RkY6ZGV2dS8yIiwiZXhwIjoxNzYzOTc4ODI3LCJodHRwOi8vZGV2cmV2LmFpL2F1dGgwX3VpZCI6ImRvbjppZGVudGl0eTpkdnJ2LXVzLTE6ZGV2by9zdXBlcjphdXRoMF91c2VyL2dvb2dsZS1vYXV0aDJ8MTA5NDAyMjA4MzU2OTI5NTIwMDY0IiwiaHR0cDovL2RldnJldi5haS9hdXRoMF91c2VyX2lkIjoiZ29vZ2xlLW9hdXRoMnwxMDk0MDIyMDgzNTY5Mjk1MjAwNjQiLCJodHRwOi8vZGV2cmV2LmFpL2Rldm9fZG9uIjoiZG9uOmlkZW50aXR5OmR2cnYtaW4tMTpkZXZvLzJHSWxVbGo3RkYiLCJodHRwOi8vZGV2cmV2LmFpL2Rldm9pZCI6IkRFVi0yR0lsVWxqN0ZGIiwiaHR0cDovL2RldnJldi5haS9kZXZ1aWQiOiJERVZVLTIiLCJodHRwOi8vZGV2cmV2LmFpL2Rpc3BsYXluYW1lIjoibm5tMjJjYzAxMSIsImh0dHA6Ly9kZXZyZXYuYWkvZW1haWwiOiJubm0yMmNjMDExQG5tYW1pdC5pbiIsImh0dHA6Ly9kZXZyZXYuYWkvZnVsbG5hbWUiOiJOTk0yMkNDMDExIENIQUlUSFJBIFMgTkFZQUsiLCJodHRwOi8vZGV2cmV2LmFpL2lzX3ZlcmlmaWVkIjp0cnVlLCJodHRwOi8vZGV2cmV2LmFpL3Rva2VudHlwZSI6InVybjpkZXZyZXY6cGFyYW1zOm9hdXRoOnRva2VuLXR5cGU6cGF0IiwiaWF0IjoxNzMyNDQyODI3LCJpc3MiOiJodHRwczovL2F1dGgtdG9rZW4uZGV2cmV2LmFpLyIsImp0aSI6ImRvbjppZGVudGl0eTpkdnJ2LWluLTE6ZGV2by8yR0lsVWxqN0ZGOnRva2VuL3cxYjFoZnBtIiwib3JnX2lkIjoib3JnX0t0U3F1elNtd3AwVnluaUgiLCJzdWIiOiJkb246aWRlbnRpdHk6ZHZydi1pbi0xOmRldm8vMkdJbFVsajdGRjpkZXZ1LzIifQ.pnFsZ9SS4iqZ4UbFNSLR27uFKJHRNP60OvWVmk83QMjg4y_LjWOa9srRaoxmKSTJGYrQo4FXnLICX5Fog6KuLHqYXbrfTTPhqJjgxBoTq_7lYxz_eAY0aaY7RC04GVu_h3O1qrFI53bFPw7TDIWAhckxqHSFbEC9o3h4CGSJhwfCz5_PI-uj_sCB--2Hiq591SCBjYUrGXvO_Hl4wTS6Y_NmuMD6booOEz3U5nToKxIVR9u97Ad1kZv0EcPsIP_wQlFHmmA1C-_VPJfnAUkPt2YbBrmDud3Cy1X279Qi1dRx2_5xqfduRtUGDNlHPBAa6nMheFgE1mO2SYMoRGrfcQ`,
+      Authorization: `Bearer ${devrevPAT}`,
       Accept: 'application/json',
       'User-Agent': 'axios/1.7.7',
+      'X-DevRev-Scope': 'beta',
     };
 
     const response = await axios.get(endpoint, { params, headers });
@@ -147,6 +149,7 @@ const getOpportunities = async (timeframe: number, devrevPAT: string): Promise<a
     return filteredOpportunitiesWithinTimeframe;
   } catch (error) {
     console.error('Error fetching opportunities:');
+    console.info('This is the culprit');
     throw error;
   }
 };
@@ -404,12 +407,12 @@ async function getChannelIdByName(channelName: string, slackClient: WebClient) {
 
 const generate_report = async (event: any) => {
   // Step 1: Validate inputs
-  const devrevPAT = event.context.secrets['service_account_token'];
-  const slackToken = event.context.secrets['slack_api_token'];
-  const llmApiKey = event.context.secrets['llm_api_token'];
+  const devrevPAT: string = event.context.secrets.service_account_token;
+  const slackToken = event.input_data.keyrings['slack_api_token'];
+  const llmApiKey = event.input_data.keyrings['llm_api_token'];
   const endpoint = event.execution_metadata.devrev_endpoint;
 
-  if (!devrevPAT || !slackToken || !llmApiKey) {
+  if (!slackToken || !llmApiKey) {
     throw new Error('Missing required secrets: service_account_token, slack_api_token, or llm_api_token.');
   }
 
@@ -431,7 +434,7 @@ const generate_report = async (event: any) => {
   const { channel, timeParams, color } = parsedInput;
   const timeframe = timeParams.totalHours;
 
-  console.log('Timeframe:', timeframe, 'Channel:', channel, 'Color:', color);
+  console.info('Timeframe:', timeframe, 'Channel:', channel, 'Color:', color);
   if (timeframe <= 0) {
     throw new Error('Invalid timeframe provided.');
   }
@@ -466,13 +469,27 @@ const generate_report = async (event: any) => {
     console.log('Slack response:', slackResponse);
   } catch (error) {
     console.error('Error generating and uploading report:', error);
+    console.info('Slack culprit');
     throw error;
   }
 };
 
 export const run = async (events: any[]) => {
-  for (const event of events) {
-    await generate_report(event);
+  console.log('Events: ', JSON.stringify(events));
+  try {
+    for (const event of events) {
+      await generate_report(event);
+    }
+    console.log('Retrying....');
+    const runtimeError = new FunctionExecutionError('Runtime Retryable Error', true, false);
+    throw runtimeError;
+  } catch (error) {
+    if (error instanceof FunctionExecutionError) {
+      throw error;
+    } else {
+      console.error('Error:', error);
+      throw new FunctionExecutionError('Runtime Non-Retryable Error', false, false);
+    }
   }
 };
 
