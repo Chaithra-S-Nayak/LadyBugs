@@ -10,7 +10,7 @@
     "build:watch": "tsc --watch",
     "prepackage": "npm run build",
     "package": "tar -cvzf build.tar.gz dist package.json package-lock.json .npmrc",
-    "start": "ts-node src/main.ts",
+    "start": "ts-node src/main.ts --functionName=generate_report --fixturePath=on_work_created_event.json",
     "start:watch": "nodemon src/main.ts",
     "start:production": "node dist/main.js",
     "test:server": "nodemon --watch src  --watch test test/main.ts",

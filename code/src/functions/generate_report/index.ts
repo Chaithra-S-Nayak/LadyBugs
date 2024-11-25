@@ -178,7 +178,7 @@ Please summarize the following:
 3. The total number of closed-won opportunities.
 4. A concise summary of each opportunity, including name, revenue, owner, customer, tickets, and discussions.
 
-Provide the output in a well-structured, brief format. Avoid raw data and focus on insights.`,
+Provide the output in a well-structured, brief format such that i can make a pdf out of it divide each subheading to sections intro Content and conclusion. Avoid raw data and focus on insights.`,
       },
     ];
 
@@ -197,72 +197,107 @@ Provide the output in a well-structured, brief format. Avoid raw data and focus 
 };
 
 
+// Function to create a PDF report
 const createPDFReport = async (beautifiedSummary: string): Promise<Uint8Array> => {
   // Create a new PDF document
   const pdfDoc = await PDFDocument.create();
-  
-  // Add a page to the PDF
-  const page = pdfDoc.addPage([600, 800]); // Adjust the size to your needs
-  const { width, height } = page.getSize();
 
-  // Embed a standard font
-  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-
-  // Add a header to the PDF
-  page.drawText('Business Opportunities Report', {
-    x: 50,
-    y: height - 50,
-    font,
-    size: 16,
-    color: rgb(0, 0, 0),
-  });
-
-  // Add the beautified summary text
-  // To fit the text inside the PDF, we will break it into smaller lines (to avoid overflow).
+  // Split content into pages if needed
+  const pageContent = beautifiedSummary.split('\n');
+  const bodyFontSize = 12;
+  const lineSpacing = 14;
   const margin = 50;
-  const maxWidth = width - 2 * margin;
-  const textHeight = 12; // Set line height for text
-  let yPosition = height - 80; // Starting Y position after the header
+  const pageHeight = 800;
+  const pageWidth = 600;
+  const maxContentHeight = pageHeight - 100; // Adjust for header/footer
+  let yPosition = maxContentHeight; // Start position for the content
 
-  const lines = beautifiedSummary.split('\n');
-  for (const line of lines) {
-    if (yPosition - textHeight < 50) break; // Stop if we reach bottom of the page
+  let currentPage: any = null;
+  let pageNumber = 1;
 
-    const lineWidth = font.widthOfTextAtSize(line, 12); // Calculate line width
-    const adjustedLine = lineWidth > maxWidth ? splitText(line, font, maxWidth) : [line];
+  // Embed fonts
+  const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const regularFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
-    for (const textLine of adjustedLine) {
-      page.drawText(textLine, {
+  // Function to create a new page
+  const createNewPage = () => {
+    const page = pdfDoc.addPage([pageWidth, pageHeight]);
+    yPosition = maxContentHeight; // Reset y-position
+    addHeaderFooter(page, pageNumber, boldFont, regularFont);
+    pageNumber += 1;
+    return page;
+  };
+
+  // Add the first page
+  currentPage = createNewPage();
+
+  // Process and write content
+  for (const line of pageContent) {
+    if (yPosition - lineSpacing < margin) {
+      currentPage = createNewPage(); // Create a new page if out of space
+    }
+
+    const isHeading = /^##/.test(line) || /^###/.test(line); // Detect subheadings
+    const font = isHeading ? boldFont : regularFont;
+    const wrappedLines = wrapText(line, font, pageWidth - 2 * margin, bodyFontSize);
+
+    for (const wrappedLine of wrappedLines) {
+      currentPage.drawText(wrappedLine, {
         x: margin,
         y: yPosition,
         font,
-        size: 12,
+        size: bodyFontSize,
         color: rgb(0, 0, 0),
       });
-      yPosition -= textHeight; // Move down for the next line
+      yPosition -= lineSpacing; // Move down for the next line
     }
   }
 
   // Save the PDF document to bytes
-  const pdfBytes = await pdfDoc.save();
-  return pdfBytes;
+  return await pdfDoc.save();
 };
 
-// Helper function to split text into multiple lines if it exceeds the max width
-const splitText = (text: string, font: any, maxWidth: number): string[] => {
+// Function to add header and footer to a page
+const addHeaderFooter = (page: any, pageNumber: number, boldFont: any, regularFont: any) => {
+  const headerText = 'Business Opportunities Report';
+  const footerText = `Page ${pageNumber}`;
+
+  // Add header
+  page.drawText(headerText, {
+    x: 50,
+    y: 780,
+    font: boldFont,
+    size: 14,
+    color: rgb(0, 0, 0),
+  });
+
+  // Add footer
+  const footerWidth = regularFont.widthOfTextAtSize(footerText, 10);
+  const footerX = (page.getWidth() - footerWidth) / 2; // Center the footer
+  page.drawText(footerText, {
+    x: footerX,
+    y: 20,
+    font: regularFont,
+    size: 10,
+    color: rgb(0, 0, 0),
+  });
+};
+
+// Helper function to wrap text within the max width
+const wrapText = (text: string, font: any, maxWidth: number, fontSize: number): string[] => {
   const words = text.split(' ');
   const lines: string[] = [];
   let currentLine = '';
 
   for (const word of words) {
     const testLine = currentLine ? `${currentLine} ${word}` : word;
-    const testLineWidth = font.widthOfTextAtSize(testLine, 12);
+    const testLineWidth = font.widthOfTextAtSize(testLine, fontSize);
 
     if (testLineWidth <= maxWidth) {
-      currentLine = testLine; // Add word to current line
+      currentLine = testLine; // Add word to the current line
     } else {
-      if (currentLine) lines.push(currentLine); // Push the current line to lines
-      currentLine = word; // Start new line with the word
+      if (currentLine) lines.push(currentLine); // Push the completed line
+      currentLine = word; // Start a new line with the word
     }
   }
 
@@ -270,18 +305,17 @@ const splitText = (text: string, font: any, maxWidth: number): string[] => {
   return lines;
 };
 
-// Function to beautify the summary (remove unnecessary markdown)
+// Function to beautify the summary (remove unnecessary markdown and make headings bold)
 const beautifySummary = (summary: string): string => {
-  // Remove Markdown headers, bold, and other unnecessary elements
   const cleanedSummary = summary
-    .replace(/(#+\s?)/g, '')  // Remove Markdown headers (e.g., # Header)
-    .replace(/\*\*(.*?)\*\*/g, '$1')  // Remove bold (**text** becomes text)
-    .replace(/\*(.*?)\*/g, '$1')  // Remove italic (*text* becomes text)
-    .replace(/__([^_]+)__/g, '$1')  // Remove bold underscores (__text__ becomes text)
-    .replace(/_(.*?)_/g, '$1')  // Remove italic underscores (_text_ becomes text)
-    .replace(/`([^`]+)`/g, '$1');  // Remove inline code (`text` becomes text)
+    .replace(/(#+\s?)/g, '') // Remove Markdown headers (e.g., # Header)
+    .replace(/\*\*(.*?)\*\*/g, '$1') // Remove bold (**text** becomes text)
+    .replace(/\*(.*?)\*/g, '$1') // Remove italic (*text* becomes text)
+    .replace(/__([^_]+)__/g, '$1') // Remove bold underscores (__text__ becomes text)
+    .replace(/_(.*?)_/g, '$1') // Remove italic underscores (_text_ becomes text)
+    .replace(/`([^`]+)`/g, '$1'); // Remove inline code (`text` becomes text)
 
-  // Prettify the cleaned summary (optional: adjust according to your needs)
+  // Prettify the cleaned summary
   return prettier.format(cleanedSummary, { parser: 'markdown' });
 };
 
