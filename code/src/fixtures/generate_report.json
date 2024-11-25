@@ -58,7 +58,7 @@
           "type": "opportunity"
         }
       },
-      "parameters": "48 general red"
+      "parameters": "general 2d 2h red"
     },
     "context": {
       "dev_oid": "don:identity:dvrv-us-1:devo/XXXXXX",

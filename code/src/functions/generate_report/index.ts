@@ -31,13 +31,55 @@ interface OpenAIMessage {
   content: string;
 }
 
-const getParameters = (paramString: string): string[] => {
-  const paramList = paramString.split(' ');
-  if (paramList.length !== 3) {
-    throw new Error('Invalid Parameters');
+interface TimeParams {
+  days?: number;
+  hours?: number;
+  totalHours: number;
+}
+
+const parseTimeParameters = (timeString: string): TimeParams => {
+  const daysMatch = timeString.match(/(\d+)d/);
+  const hoursMatch = timeString.match(/(\d+)h/);
+
+  const days = daysMatch ? parseInt(daysMatch[1]) : 0;
+  const hours = hoursMatch ? parseInt(hoursMatch[1]) : 0;
+
+  // If neither days nor hours specified, throw error
+  if (!days && !hours) {
+    throw new Error('Invalid time format. Use format: [Nd][Nh] (e.g. 1d 2h, 24h, 2d)');
   }
-  const [timeframe, channel, color] = paramList;
-  return [timeframe, channel, color];
+
+  return {
+    days: days || undefined,
+    hours: hours || undefined,
+    totalHours: days * 24 + hours,
+  };
+};
+
+const parseInput = (
+  input: string
+): {
+  channel: string;
+  timeParams: TimeParams;
+  color: string;
+} => {
+  const parts = input.trim().split(' ');
+
+  if (parts.length < 3 || parts.length > 4) {
+    throw new Error('Invalid input format');
+  }
+
+  const channel = parts[0];
+  const color = parts[parts.length - 1];
+  const timeString = parts.slice(1, -1).join('');
+
+  const timeParams = parseTimeParameters(timeString);
+
+  return {
+    channel,
+    timeParams,
+    color,
+  };
 };
 
 const verifyChannel = async (channelName: string, slackClient: WebClient): Promise<boolean> => {
@@ -101,7 +143,7 @@ const getOpportunities = async (timeframe: number, devrevPAT: string): Promise<a
       const timeframeDate = new Date(Date.now() - timeframe * 60 * 60 * 1000);
       return closeDate >= timeframeDate;
     });
-    console.log('API Response:', filteredOpportunitiesWithinTimeframe);
+    console.log('API Response:', JSON.stringify(filteredOpportunitiesWithinTimeframe, null, 2));
     return filteredOpportunitiesWithinTimeframe;
   } catch (error) {
     console.error('Error fetching opportunities:');
@@ -384,12 +426,12 @@ const generate_report = async (event: any) => {
     throw new Error('No parameters provided in the event payload.');
   }
 
-  const [timeframeRaw, channelRaw, color] = getParameters(commandParams.trim());
-  const timeframe = parseInt(timeframeRaw.trim());
-  const channel = channelRaw.trim();
+  const parsedInput = parseInput(commandParams.trim());
+  const { channel, timeParams, color } = parsedInput;
+  const timeframe = timeParams.totalHours;
 
   console.log('Timeframe:', timeframe, 'Channel:', channel, 'Color:', color);
-  if (isNaN(timeframe) || timeframe <= 0) {
+  if (timeframe <= 0) {
     throw new Error('Invalid timeframe provided.');
   }
 
