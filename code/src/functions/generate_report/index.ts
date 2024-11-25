@@ -1,4 +1,4 @@
-import { betaSDK, client } from '@devrev/typescript-sdk';
+// import { betaSDK, client } from '@devrev/typescript-sdk';
 import { WebClient } from '@slack/web-api';
 import OpenAI from 'openai';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
@@ -54,7 +54,7 @@ const verifyChannel = async (channelName: string, slackClient: WebClient): Promi
     if (result.ok && result.channels) {
       // Check if the channel name exists in the list
       const channelExists = result.channels.some((channel) => channel.name === channelName);
-      console.log('Channel exists:', channelExists, 'Channel lists:', result.channels);
+      // console.log('Channel exists:', channelExists, 'Channel lists:', result.channels);
       return channelExists;
     } else {
       throw new Error('Failed to fetch channels list');
@@ -64,7 +64,7 @@ const verifyChannel = async (channelName: string, slackClient: WebClient): Promi
     throw error;
   }
 };
-//--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
 const getOpportunities = async (timeframe: number, devrevPAT: string): Promise<any[]> => {
   try {
     // Fetch opportunities
@@ -86,8 +86,6 @@ const getOpportunities = async (timeframe: number, devrevPAT: string): Promise<a
 
     const response = await axios.get(endpoint, { params, headers });
     const data = response.data;
-
-    // Log the response to understand its structure
 
     // Extract opportunities from the response
     const opportunities = data.works;
@@ -188,14 +186,13 @@ Provide the output in a well-structured, brief format such that i can make a pdf
       messages: messages,
       max_tokens: 1000,
     });
-    console.log('OpenAI Response:', response.choices[0]?.message?.content);
+    // console.log('OpenAI Response:', response.choices[0]?.message?.content);
     return response.choices[0]?.message?.content || 'Summary generation failed.';
   } catch (error) {
     console.error('Error generating summary:', error);
     throw error;
   }
 };
-
 
 // Function to create a PDF report
 const createPDFReport = async (beautifiedSummary: string): Promise<Uint8Array> => {
@@ -321,33 +318,33 @@ const beautifySummary = (summary: string): string => {
 
 async function uploadFileToSlack(pdfBytes: Uint8Array, channelName: string, slackClient: WebClient) {
   try {
-    const channelId = await getChannelIdByName(channelName ,slackClient);
+    const channelId = await getChannelIdByName(channelName, slackClient);
     if (!channelId) {
       throw new Error(`Channel ID for ${channelName} not found.`);
     }
     await slackClient.conversations.join({ channel: channelId });
     const buffer = Buffer.from(pdfBytes); // Define the buffer variable
     const response = await slackClient.files.uploadV2({
-      channels: channelId,  // Ensure this is the channel ID
+      channels: channelId, // Ensure this is the channel ID
       file: buffer,
       filename: 'Business_Opportunities_Report.pdf',
       filetype: 'pdf',
       title: 'Business Opportunities Report',
     });
     console.log('File uploaded:', response);
-  } catch (error: any) { // Type the error object
+  } catch (error: any) {
+    // Type the error object
     console.error('Error uploading file:', error.response?.data || error.message);
     throw error;
   }
-  
 }
 
-async function getChannelIdByName(channelName : string, slackClient : WebClient) {
+async function getChannelIdByName(channelName: string, slackClient: WebClient) {
   try {
     const response = await slackClient.conversations.list();
     if (response.ok) {
       // Find the channel by its name
-      const channel = response.channels?.find(c => c.name === channelName);
+      const channel = response.channels?.find((c) => c.name === channelName);
       if (channel) {
         return channel.id; // Return the channel ID
       } else {
@@ -362,75 +359,72 @@ async function getChannelIdByName(channelName : string, slackClient : WebClient)
   }
 }
 
-//--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 const generate_report = async (event: any) => {
+  // Step 1: Validate inputs
+  const devrevPAT = event.context.secrets['service_account_token'];
+  const slackToken = event.context.secrets['slack_api_token'];
+  const llmApiKey = event.context.secrets['llm_api_token'];
+  const endpoint = event.execution_metadata.devrev_endpoint;
 
-    // Step 1: Validate inputs
-    const devrevPAT = event.context.secrets['service_account_token'];
-    const slackToken = event.context.secrets['slack_api_token'];
-    const llmApiKey = event.context.secrets['llm_api_token'];
-    const endpoint = event.execution_metadata.devrev_endpoint;
+  if (!devrevPAT || !slackToken || !llmApiKey) {
+    throw new Error('Missing required secrets: service_account_token, slack_api_token, or llm_api_token.');
+  }
 
-    if (!devrevPAT || !slackToken || !llmApiKey) {
-      throw new Error('Missing required secrets: service_account_token, slack_api_token, or llm_api_token.');
-    }
+  // Step 2: Initialize DevRev SDK
+  // const devrevSDK = client.setup({
+  //   endpoint: endpoint,
+  //   token: devrevPAT,
+  // });
 
-    // Step 2: Initialize DevRev SDK
-    const devrevSDK = client.setup({
-      endpoint: endpoint,
-      token: devrevPAT,
-    });
+  const slackClient = new WebClient(slackToken);
 
-    const slackClient = new WebClient(slackToken);
+  // Validate command parameters
+  const commandParams = event.payload['parameters'];
+  if (!commandParams) {
+    throw new Error('No parameters provided in the event payload.');
+  }
 
-    // Validate command parameters
-    const commandParams = event.payload['parameters'];
-    if (!commandParams) {
-      throw new Error('No parameters provided in the event payload.');
-    }
+  const [timeframeRaw, channelRaw, color] = getParameters(commandParams.trim());
+  const timeframe = parseInt(timeframeRaw.trim());
+  const channel = channelRaw.trim();
 
-    const [timeframeRaw, channelRaw, color] = getParameters(commandParams.trim());
-    const timeframe = parseInt(timeframeRaw.trim());
-    const channel = channelRaw.trim() ;
+  console.log('Timeframe:', timeframe, 'Channel:', channel, 'Color:', color);
+  if (isNaN(timeframe) || timeframe <= 0) {
+    throw new Error('Invalid timeframe provided.');
+  }
 
-    console.log('Timeframe:', timeframe, 'Channel:', channel, 'Color:', color);
-    if (isNaN(timeframe) || timeframe <= 0) {
-      throw new Error('Invalid timeframe provided.');
-    }
+  // Verify if channel is valid
+  const isChannelValid = await verifyChannel(channel, slackClient);
 
-    // Verify if channel is valid
-    const isChannelValid = await verifyChannel(channel, slackClient);
+  if (!isChannelValid) {
+    throw new Error(`The channel ${channel} does not exist or is not accessible.`);
+  }
 
-    if (!isChannelValid) {
-      throw new Error(`The channel ${channel} does not exist or is not accessible.`);
-    }
+  // Fetch opportunities
+  const opportunities: Opportunity[] = await getOpportunities(timeframe, devrevPAT);
 
-    // Fetch opportunities
-    const opportunities: Opportunity[] = await getOpportunities(timeframe, devrevPAT);
+  if (!opportunities || opportunities.length === 0) {
+    throw new Error(`No opportunities found in the last ${timeframe} hours.`);
+  }
 
-    if (!opportunities || opportunities.length === 0) {
-      throw new Error(`No opportunities found in the last ${timeframe} hours.`);
-    }
+  try {
+    // Generate summary (from previous code or API)
+    const summary = await generateSummary(opportunities, llmApiKey);
 
+    // Beautify the summary
+    const beautifiedSummary = beautifySummary(summary);
+    console.log(beautifiedSummary);
 
-    try {
-      // Generate summary (from previous code or API)
-      const summary = await generateSummary(opportunities, llmApiKey);
-      
-      // Beautify the summary
-      const beautifiedSummary = beautifySummary(summary);
-      console.log(beautifiedSummary);
-      
-      // Create the PDF report
-      const pdfBytes = await createPDFReport(beautifiedSummary);
-      
-      // Upload the generated PDF to Slack
-      const slackResponse = await uploadFileToSlack(pdfBytes, channel, slackClient);
-      console.log('Slack response:', slackResponse);
-    } catch (error) {
-      console.error('Error generating and uploading report:', error);
-      throw error;
-    }
+    // Create the PDF report
+    const pdfBytes = await createPDFReport(beautifiedSummary);
+
+    // Upload the generated PDF to Slack
+    const slackResponse = await uploadFileToSlack(pdfBytes, channel, slackClient);
+    console.log('Slack response:', slackResponse);
+  } catch (error) {
+    console.error('Error generating and uploading report:', error);
+    throw error;
+  }
 };
 
 export const run = async (events: any[]) => {

@@ -69,7 +69,7 @@ describe('Index Test Suite', () => {
 
   it('should run testRunner with proper fixture and function name', () => {
     testRunner({
-      fixturePath: 'on_work_created_event.json',
+      fixturePath: 'generate_report.json',
       functionName: 'generate_report',
     });
   });
