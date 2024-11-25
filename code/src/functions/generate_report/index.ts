@@ -2,7 +2,7 @@
 import { WebClient } from '@slack/web-api';
 import OpenAI from 'openai';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
-import prettier from 'prettier';
+// import prettier from 'prettier';
 
 const axios = require('axios');
 
@@ -355,7 +355,8 @@ const beautifySummary = (summary: string): string => {
     .replace(/`([^`]+)`/g, '$1'); // Remove inline code (`text` becomes text)
 
   // Prettify the cleaned summary
-  return prettier.format(cleanedSummary, { parser: 'markdown' });
+  // return prettier.format(cleanedSummary, { parser: 'markdown' });
+  return cleanedSummary;
 };
 
 async function uploadFileToSlack(pdfBytes: Uint8Array, channelName: string, slackClient: WebClient) {
