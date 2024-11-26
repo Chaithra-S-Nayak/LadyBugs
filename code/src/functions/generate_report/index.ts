@@ -1,4 +1,5 @@
-// import { betaSDK, client } from '@devrev/typescript-sdk';
+import { betaSDK, client } from '@devrev/typescript-sdk';
+import { WorksListResponse, WorkType } from '@devrev/typescript-sdk/dist/auto-generated/beta/beta-devrev-sdk';
 import { FunctionExecutionError } from '@devrev/typescript-sdk/dist/snap-ins/types';
 import { WebClient } from '@slack/web-api';
 import OpenAI from 'openai';
@@ -7,9 +8,10 @@ import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 
 const axios = require('axios');
 
+
 interface Opportunity {
   type: any;
-  actual_close_date: any;
+  actual_close_date?: any;
   body: any;
   created_by: any;
   created_date: any;
@@ -37,6 +39,18 @@ interface TimeParams {
   hours?: number;
   totalHours: number;
 }
+export type HTTPResponse = {
+  success: boolean;
+  message: string;
+  data: any; // You can replace `any` with a more specific type if you know the structure of `data`.
+};
+
+export const defaultResponse: HTTPResponse = {
+  data: {},
+  message: '',
+  success: false,
+};
+
 
 const parseTimeParameters = (timeString: string): TimeParams => {
   const daysMatch = timeString.match(/(\d+)d/);
@@ -108,52 +122,70 @@ const verifyChannel = async (channelName: string, slackClient: WebClient): Promi
   }
 };
 
-const getOpportunities = async (timeframe: number, devrevPAT: string): Promise<any[]> => {
-  try {
-    // Fetch opportunities
-    const endpoint = 'https://api.devrev.ai/works.list';
-    const params = {
-      limit: 100,
-      type: 'opportunity',
-      // actual_close_date: new Date(Date.now() - timeframe * 60 * 60 * 1000).toISOString(),
-      // Commenting out filters for now
-      // 'filters[opportunity.subtype]': 'closed-won', // Adjust this based on the correct filter parameter
-      // 'filters[updated_at][after]': new Date(Date.now() - timeframe * 60 * 60 * 1000).toISOString()
-    };
+const filterOpportunities = (data: WorksListResponse, timeframeDate: string): Opportunity[] => {
+  // Filter by WorkType (Opportunity) and closed-won status
+  const filteredOpportunities = data.works.filter((work) => {
+    return (
+      work.type === WorkType.Opportunity // Filter for Opportunity
+    );
+  });
 
-    const headers = {
-      Authorization: `Bearer ${devrevPAT}`,
-      Accept: 'application/json',
-      'User-Agent': 'axios/1.7.7',
-      'X-DevRev-Scope': 'beta',
-    };
-
-    const response = await axios.get(endpoint, { params, headers });
-    const data = response.data;
-
-    // Extract opportunities from the response
-    const opportunities = data.works;
-
-    // Ensure opportunities is an array
-    if (!Array.isArray(opportunities)) {
-      throw new Error('Expected an array of opportunities');
-    }
-
-    const filteredOpportunities = opportunities.filter((opportunity) => opportunity.actual_close_date);
-    const filteredOpportunitiesWithinTimeframe = filteredOpportunities.filter((opportunity) => {
-      const closeDate = new Date(opportunity.actual_close_date);
-      const timeframeDate = new Date(Date.now() - timeframe * 60 * 60 * 1000);
-      return closeDate >= timeframeDate;
-    });
-    console.log('API Response:', JSON.stringify(filteredOpportunitiesWithinTimeframe, null, 2));
-    return filteredOpportunitiesWithinTimeframe;
-  } catch (error) {
-    console.error('Error fetching opportunities:');
-    console.info('This is the culprit');
-    throw error;
-  }
+  return filteredOpportunities.map((work) => ({
+    type: work.type,
+    // actual_close_date: work.actual_close_date,
+    body: work.body,
+    created_by: work.created_by,
+    created_date: work.created_date,
+    custom_fields: work.custom_fields,
+    display_id: work.display_id,
+    modified_by: work.modified_by,
+    modified_date: work.modified_date,
+    owned_by: work.owned_by,
+    stage: work.stage,
+    stock_schema_fragment: work.stock_schema_fragment,
+    tags: work.tags,
+    title: work.title,
+    id: work.id,
+    name: work.title, // Assuming title is the name
+    revenue: (work.custom_fields as { revenue?: number })?.revenue || 0, // Assuming revenue is in custom_fields
+  }));
 };
 
+// Function to fetch works and manually apply filtering
+const getOpportunities = async (timeframe: number, devrevPAT: string, endpoint: string): Promise<Opportunity[]> => {
+  try {
+    // Initialize DevRev SDK
+    const devrevSDK = client.setup({
+      endpoint: endpoint, 
+      token: devrevPAT,
+    });
+
+    // Fetch all work items (without any filters)
+    const response = await devrevSDK.worksList({
+      limit: 100,
+    });
+
+    // Ensure the response contains data
+    if (!response.data || !Array.isArray(response.data)) {
+      throw new Error('Invalid response format: Expected an array of works');
+    }
+
+    const worksList = response.data;
+
+    // Define timeframe filter (in ISO format)
+    const timeframeDate = new Date(Date.now() - timeframe * 60 * 60 * 1000).toISOString();
+
+    // Manually filter the opportunities from the fetched works
+    const opportunities = filterOpportunities(worksList, timeframeDate);
+
+    // Return filtered opportunities
+    return opportunities;
+
+  } catch (error) {
+    console.error('Error fetching or filtering opportunities:', error);
+    return [];
+  }
+};
 const generateSummary = async (opportunities: Opportunity[], llmApiKey: string): Promise<string> => {
   try {
     const openai = new OpenAI({
@@ -417,10 +449,10 @@ const generate_report = async (event: any) => {
   }
 
   // Step 2: Initialize DevRev SDK
-  // const devrevSDK = client.setup({
-  //   endpoint: endpoint,
-  //   token: devrevPAT,
-  // });
+  const devrevSDK = client.setup({
+    endpoint: endpoint,
+    token: devrevPAT,
+  });
 
   const slackClient = new WebClient(slackToken);
 
@@ -447,7 +479,7 @@ const generate_report = async (event: any) => {
   }
 
   // Fetch opportunities
-  const opportunities: Opportunity[] = await getOpportunities(timeframe, devrevPAT);
+  const opportunities = await getOpportunities(timeframe, devrevPAT, endpoint);
 
   if (!opportunities || opportunities.length === 0) {
     throw new Error(`No opportunities found in the last ${timeframe} hours.`);
