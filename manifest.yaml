@@ -79,6 +79,8 @@ commands:
       - surface: discussions
         object_types:
           - opportunity
+          - ticket
+          - issue
     usage_hint: "[channel] [nd] [nh] [color]"
     function: generate_report
 

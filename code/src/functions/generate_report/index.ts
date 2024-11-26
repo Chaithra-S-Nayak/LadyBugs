@@ -8,7 +8,6 @@ import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 
 const axios = require('axios');
 
-
 interface Opportunity {
   type: any;
   actual_close_date?: any;
@@ -50,7 +49,6 @@ export const defaultResponse: HTTPResponse = {
   message: '',
   success: false,
 };
-
 
 const parseTimeParameters = (timeString: string): TimeParams => {
   const daysMatch = timeString.match(/(\d+)d/);
@@ -152,38 +150,18 @@ const filterOpportunities = (data: WorksListResponse, timeframeDate: string): Op
 };
 
 // Function to fetch works and manually apply filtering
-const getOpportunities = async (timeframe: number, devrevPAT: string, endpoint: string): Promise<Opportunity[]> => {
+const getOpportunities = async (timeframe: number, devrevSDK: any): Promise<any[]> => {
   try {
-    // Initialize DevRev SDK
-    const devrevSDK = client.setup({
-      endpoint: endpoint, 
-      token: devrevPAT,
-    });
-
-    // Fetch all work items (without any filters)
-    const response = await devrevSDK.worksList({
+    // Fetch closed and won opportunities
+    const opportunities = await devrevSDK.worksList({
       limit: 100,
+      type: [betaSDK.WorkType.Opportunity],
     });
-
-    // Ensure the response contains data
-    if (!response.data || !Array.isArray(response.data)) {
-      throw new Error('Invalid response format: Expected an array of works');
-    }
-
-    const worksList = response.data;
-
-    // Define timeframe filter (in ISO format)
-    const timeframeDate = new Date(Date.now() - timeframe * 60 * 60 * 1000).toISOString();
-
-    // Manually filter the opportunities from the fetched works
-    const opportunities = filterOpportunities(worksList, timeframeDate);
-
-    // Return filtered opportunities
-    return opportunities;
-
+    console.log('API Response:', JSON.stringify(opportunities.data.works, null, 2));
+    return opportunities.data.works;
   } catch (error) {
-    console.error('Error fetching or filtering opportunities:', error);
-    return [];
+    console.error('Error fetching opportunities:', error);
+    throw error;
   }
 };
 const generateSummary = async (opportunities: Opportunity[], llmApiKey: string): Promise<string> => {
@@ -439,9 +417,9 @@ async function getChannelIdByName(channelName: string, slackClient: WebClient) {
 
 const generate_report = async (event: any) => {
   // Step 1: Validate inputs
-  const devrevPAT: string = event.context.secrets.service_account_token;
-  const slackToken = event.input_data.keyrings['slack_api_token'];
-  const llmApiKey = event.input_data.keyrings['llm_api_token'];
+  const devrevPAT = event.context.secrets['service_account_token'];
+  const slackToken = event.context.secrets['slack_api_token'];
+  const llmApiKey = event.context.secrets['llm_api_token'];
   const endpoint = event.execution_metadata.devrev_endpoint;
 
   if (!slackToken || !llmApiKey) {
@@ -479,7 +457,7 @@ const generate_report = async (event: any) => {
   }
 
   // Fetch opportunities
-  const opportunities = await getOpportunities(timeframe, devrevPAT, endpoint);
+  const opportunities = await getOpportunities(timeframe, devrevSDK);
 
   if (!opportunities || opportunities.length === 0) {
     throw new Error(`No opportunities found in the last ${timeframe} hours.`);
@@ -508,20 +486,8 @@ const generate_report = async (event: any) => {
 
 export const run = async (events: any[]) => {
   console.log('Events: ', JSON.stringify(events));
-  try {
-    for (const event of events) {
-      await generate_report(event);
-    }
-    console.log('Retrying....');
-    const runtimeError = new FunctionExecutionError('Runtime Retryable Error', true, false);
-    throw runtimeError;
-  } catch (error) {
-    if (error instanceof FunctionExecutionError) {
-      throw error;
-    } else {
-      console.error('Error:', error);
-      throw new FunctionExecutionError('Runtime Non-Retryable Error', false, false);
-    }
+  for (const event of events) {
+    await generate_report(event);
   }
 };
 
