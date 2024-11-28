@@ -2,6 +2,9 @@ import { betaSDK, client } from '@devrev/typescript-sdk';
 import { WebClient } from '@slack/web-api';
 import OpenAI from 'openai';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import { createCanvas } from 'canvas'; // Import node-canvas
+import Chart, { ChartItem } from 'chart.js/auto'; // Import Chart.js and ChartItem type
+import fs from 'fs';
 
 interface TimeParams {
   days?: number;
@@ -212,8 +215,67 @@ const verifyChannel = async (channelName: string, slackClient: WebClient): Promi
   }
 };
 
+
+const getOpportunityOwnerCounts = (opportunities: Opportunity[]): { [owner: string]: number } => {
+  const ownerCounts: { [owner: string]: number } = {};
+
+  opportunities.forEach((opp) => {
+    // Log the stage name for debugging
+    console.log("Opportunity Stage:", opp.stage?.name);
+
+    // Check if the opportunity has a valid stage and owner
+    if (opp.stage?.name === 'closed_won') {
+      const owner = opp.owned_by[0]?.full_name.trim().toLowerCase(); // Ensure you're accessing the first owner if it's an array
+      console.log("Owner:", owner);  // Log owner for debugging
+
+      if (owner) {
+        ownerCounts[owner] = (ownerCounts[owner] || 0) + 1;
+      }
+    }
+  });
+
+  // Log the final owner counts for debugging
+  console.log('Owner counts:', ownerCounts);
+
+  return ownerCounts;
+};
+
+
+
+
+ 
+  const generateDoughnutChart = (ownerCounts: { [owner: string]: number }): string => {
+    const fs = require('fs');
+    const width = 400;
+    const height = 400;
+    const canvas = createCanvas(width, height);
+    const ctx = canvas.getContext('2d');
+  
+    const data = {
+      labels: Object.keys(ownerCounts),
+      datasets: [
+        {
+          data: Object.values(ownerCounts),
+          backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56', '#FF5733', '#C70039'],
+        },
+      ],
+    };
+  
+    new Chart(ctx as unknown as ChartItem, {
+      type: 'doughnut',
+      data,
+    });
+  
+    // Debug: Save the canvas to a file for inspection
+    fs.writeFileSync('chart_debug.png', canvas.toBuffer('image/png'));
+  
+    return canvas.toDataURL();
+  };
+
+
+
 // Function to create a PDF report
-const createPDFReport = async (beautifiedSummary: string): Promise<Uint8Array> => {
+const createPDFReport = async (beautifiedSummary: string, chartImageBase64: string): Promise<Uint8Array> => {
   const pdfDoc = await PDFDocument.create();
   const pageContent = beautifiedSummary.split('\n');
   const bodyFontSize = 12;
@@ -312,9 +374,28 @@ const createPDFReport = async (beautifiedSummary: string): Promise<Uint8Array> =
     }
   }
 
+  // Remove the base64 prefix and embed the chart image
+  const base64Data = chartImageBase64.replace(/^data:image\/png;base64,/, '');
+  const chartImage = await pdfDoc.embedPng(Buffer.from(base64Data, 'base64'));
+
+  // Check if the current page has enough space left for the chart
+  if (yPosition - 200 < margin) {
+    currentPage = createNewPage();
+  }
+
+  // Add the chart image at the end
+  currentPage.drawImage(chartImage, {
+    x: 50,
+    y: yPosition - 200, // Adjust position based on remaining space
+    width: 500,
+    height: 200,
+  });
+
   // Save the PDF document to bytes
   return await pdfDoc.save();
 };
+
+
 
 const beautifySummary = (summary: string): string => {
   const cleanedSummary = summary
@@ -356,10 +437,9 @@ async function uploadFileToSlack(pdfBytes: Uint8Array, channelName: string, slac
     await slackClient.conversations.join({ channel: channelId });
     const buffer = Buffer.from(pdfBytes);
     const response = await slackClient.files.uploadV2({
-      channels: channelId,
+      channel_id: channelId,
       file: buffer,
       filename: 'Business_Opportunities_Report.pdf',
-      filetype: 'pdf',
       title: 'Business Opportunities Report',
     });
     // console.log('File uploaded:', response);
@@ -419,7 +499,9 @@ const generate_report = async (event: any) => {
   }
 
   // Create the PDF report
-  const pdfBytes = await createPDFReport(beautifiedSummary);
+  const ownerCounts = getOpportunityOwnerCounts(opportunities);
+  const chartImageBase64 = generateDoughnutChart(ownerCounts);
+  const pdfBytes = await createPDFReport(beautifiedSummary, chartImageBase64);
 
   // Upload the generated PDF to Slack
   const slackResponse = await uploadFileToSlack(pdfBytes, channel, slackClient);
