@@ -490,6 +490,8 @@ currentPage.drawImage(barChart_1, {
   return await pdfDoc.save();
 };
 
+
+
 const beautifySummary = (summary: string): string => {
   const cleanedSummary = summary
     .replace(/(#+\s?)/g, '')
@@ -533,6 +535,7 @@ async function uploadFileToSlack(pdfBytes: Uint8Array, channelName: string, slac
     await slackClient.conversations.join({ channel: channelId });
     const buffer = Buffer.from(pdfBytes);
     const response = await slackClient.files.uploadV2({
+      channel_id: channelId,
       channel_id: channelId,
       file: buffer,
       filename: 'Business_Opportunities_Report.pdf',
