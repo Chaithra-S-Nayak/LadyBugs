@@ -2,6 +2,8 @@ import { betaSDK, client } from '@devrev/typescript-sdk';
 import { WebClient } from '@slack/web-api';
 import OpenAI from 'openai';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import { createCanvas } from 'canvas'; 
+import Chart, { ChartItem } from 'chart.js/auto'; 
 
 interface TimeParams {
   days?: number;
@@ -214,8 +216,149 @@ const verifyChannel = async (channelName: string, slackClient: WebClient): Promi
   }
 };
 
+// Function to get opportunity owner counts by stage
+const getOpportunityOwnerCountsByStage = (opportunities: Opportunity[]): { [owner: string]: { closed_won_count: number, closed_lost_count: number }, globalCounts: { closed_won_count: number, closed_lost_count: number } } => {
+  // Initialize the object to hold owner-wise counts and global counts
+  const ownerStageCounts: { [owner: string]: { closed_won_count: number, closed_lost_count: number }, globalCounts: { closed_won_count: number, closed_lost_count: number } } = {
+    globalCounts: {
+      closed_won_count: 0,
+      closed_lost_count: 0
+    }
+  };
+
+  opportunities.forEach((opp) => {
+    const owner = opp.owned_by[0]?.full_name.trim().toLowerCase();
+    if (owner) {
+      // Initialize owner data if it doesn't exist
+      if (!ownerStageCounts[owner]) {
+        ownerStageCounts[owner] = { closed_won_count: 0, closed_lost_count: 0 };
+      }
+
+      // Update the counts based on the opportunity stage
+      if (opp.stage?.name === 'closed_won') {
+        ownerStageCounts[owner].closed_won_count += 1;
+        ownerStageCounts.globalCounts.closed_won_count += 1; // Increment global closed_won_count
+      } else if (opp.stage?.name === 'closed_lost') {
+        ownerStageCounts[owner].closed_lost_count += 1;
+        ownerStageCounts.globalCounts.closed_lost_count += 1; // Increment global closed_lost_count
+      }
+    }
+  });
+
+  console.log('Owner counts:', ownerStageCounts);
+
+  return ownerStageCounts;
+};
+
+// Function to generate a doughnut chart from owner counts
+const generateOpportunityStackedBarChart = (ownerCounts: { [owner: string]: { closed_won_count: number, closed_lost_count: number } }, globalCounts: { closed_won_count: number, closed_lost_count: number }): string => {
+  const width = 400;
+  const height = 400;
+  const canvas = createCanvas(width, height);
+  const ctx = canvas.getContext('2d');
+
+  // Extract owner names (excluding the special counts for closed_won_count and closed_lost_count)
+  const owners = Object.keys(ownerCounts).filter(owner => owner !== 'closed_won_count' && owner !== 'closed_lost_count');
+
+  // Get the won and lost counts for each owner
+  const wonCounts = owners.map(owner => ownerCounts[owner]?.closed_won_count || 0);
+  const lostCounts = owners.map(owner => ownerCounts[owner]?.closed_lost_count || 0);
+
+  // Chart Data - Stacked Bar Chart
+  const chartData = {
+    labels: owners, // Owner names on the x-axis
+    datasets: [
+      {
+        label: 'Won Opportunities',
+        data: wonCounts, // Won opportunities for each owner
+        backgroundColor: '#4caf50', // Green for "Won"
+        stack: 'stack1',
+      },
+      {
+        label: 'Lost Opportunities',
+        data: lostCounts, // Lost opportunities for each owner
+        backgroundColor: '#f44336', // Red for "Lost"
+        stack: 'stack1',
+      },
+    ],
+  };
+
+  // Chart Options - Configure the bar chart to be stacked
+  const options = {
+    responsive: true,
+    scales: {
+      x: {
+        beginAtZero: true,
+      },
+      y: {
+        beginAtZero: true,
+        stacked: true, // Stack the bars on top of each other
+      },
+    },
+    plugins: {
+      legend: {
+        position: 'top',
+      },
+    },
+  };
+
+  // Generate the bar chart using Chart.js
+  new Chart(ctx as unknown as ChartItem, {
+    type: 'bar', // Stacked Bar Chart
+    data: chartData,
+  });
+
+  return canvas.toDataURL(); // Return the chart as a base64-encoded string
+};
+
+// Function to get the count of opportunities by owner
+const getOpportunityOwnerCounts = (opportunities: Opportunity[]): { [owner: string]: number } => {
+  const ownerCounts: { [owner: string]: number } = {};
+
+  opportunities.forEach((opp) => {
+    if (opp.stage?.name === 'closed_won') {
+      const owner = opp.owned_by[0]?.full_name.trim().toLowerCase();
+      if (owner) {
+        // Increment the count for the owner
+        ownerCounts[owner] = (ownerCounts[owner] || 0) + 1;
+      }
+    }
+  });
+
+  console.log('Owner closed_won counts:', ownerCounts);
+
+  return ownerCounts;
+};
+
+
+
+// Function to generate a doughnut chart from owner counts
+  const generateDoughnutChart = (ownerCounts: { [owner: string]: number }): string => {
+    const width = 400;
+    const height = 400;
+    const canvas = createCanvas(width, height);
+    const ctx = canvas.getContext('2d');
+  
+    const data = {
+      labels: Object.keys(ownerCounts),
+      datasets: [
+        {
+          data: Object.values(ownerCounts),
+          backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56', '#FF5733', '#C70039'],
+        },
+      ],
+    };
+  
+    new Chart(ctx as unknown as ChartItem, {
+      type: 'doughnut',
+      data,
+    });
+  
+    return canvas.toDataURL();
+  };
+
 // Function to create a PDF report
-const createPDFReport = async (beautifiedSummary: string): Promise<Uint8Array> => {
+const createPDFReport = async (beautifiedSummary: string , chartImageBase64_1: string , chartImageBase64_2 : string ): Promise<Uint8Array> => {
   const pdfDoc = await PDFDocument.create();
   const pageContent = beautifiedSummary.split('\n');
   const bodyFontSize = 12;
@@ -310,7 +453,40 @@ const createPDFReport = async (beautifiedSummary: string): Promise<Uint8Array> =
       yPosition -= lineSpacing;
     }
   }
+  // Remove the base64 prefix and embed the chart image
+const base64Data_1 = chartImageBase64_1.replace(/^data:image\/png;base64,/, '');
+const base64Data_2 = chartImageBase64_2.replace(/^data:image\/png;base64,/, '');
+const doughnutChart_1 = await pdfDoc.embedPng(Buffer.from(base64Data_1, 'base64'));
+const barChart_1 = await pdfDoc.embedPng(Buffer.from(base64Data_2, 'base64'));
 
+// Check if the current page has enough space left for the chart 1
+if (yPosition - 300 < margin) {
+  currentPage = createNewPage();
+}
+
+// Add the chart image at the end for chart 1
+currentPage.drawImage(doughnutChart_1, {
+  x: 75,
+  y: yPosition - 300, // Adjust position based on remaining space
+  width: 400,
+  height: 300,
+});
+
+// Update the yPosition after placing the first chart
+yPosition -= 300; // Adjust yPosition to make space for the second chart
+
+// Ensure there is enough space for the second chart
+if (yPosition - 300 < margin) {
+  currentPage = createNewPage();
+}
+
+// Add the chart image at the end for chart 2
+currentPage.drawImage(barChart_1, {
+  x: 75,
+  y: yPosition - 300, // Adjust position based on remaining space
+  width: 400,
+  height: 300,
+});
   return await pdfDoc.save();
 };
 
@@ -357,10 +533,9 @@ async function uploadFileToSlack(pdfBytes: Uint8Array, channelName: string, slac
     await slackClient.conversations.join({ channel: channelId });
     const buffer = Buffer.from(pdfBytes);
     const response = await slackClient.files.uploadV2({
-      channels: channelId,
+      channel_id: channelId,
       file: buffer,
       filename: 'Business_Opportunities_Report.pdf',
-      filetype: 'pdf',
       title: 'Business Opportunities Report',
     });
     // console.log('File uploaded:', response);
@@ -420,7 +595,12 @@ const generate_report = async (event: any) => {
   }
 
   // Create the PDF report
-  const pdfBytes = await createPDFReport(beautifiedSummary);
+  const ownerCounts = getOpportunityOwnerCounts(opportunities);
+  const chartImageBase64_1 = generateDoughnutChart(ownerCounts);
+  const ownerByStageCounts = getOpportunityOwnerCountsByStage(opportunities);
+  const chartImageBase64_2 = generateOpportunityStackedBarChart(ownerByStageCounts , ownerByStageCounts.globalCounts);
+  const pdfBytes = await createPDFReport(beautifiedSummary, chartImageBase64_1, chartImageBase64_2);
+
 
   // Upload the generated PDF to Slack
   const slackResponse = await uploadFileToSlack(pdfBytes, channel, slackClient);
