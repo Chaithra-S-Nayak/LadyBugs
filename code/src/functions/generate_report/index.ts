@@ -162,13 +162,18 @@ const generateSummary = async (opportunities: Opportunity[], llmApiKey: string):
 Opportunities:
 ${JSON.stringify(opportunityDetails, null, 2)}
 
-Please summarize the following:
-1. Total revenue from all closed-won opportunities.
-2. The top customer by revenue.
-3. The total number of closed-won opportunities.
-4. A concise summary of each opportunity, including name, revenue, owner, customer, tickets, and discussions.
+Please extract the following information from each opportunity which can be present in the body:
+Account name
+Annual revenue
+Number of employees
+Key insights such as trends, upsell potential, and noteworthy outliers
 
-Provide the output in a well-structured, brief format such that i can make a pdf out of it divide each subheading to sections intro Content and conclusion. Avoid raw data and focus on insights.`,
+Then, summarize the following:
+Total revenue from all closed-won opportunities.
+The total number of closed-won opportunities.
+The top-performing accounts.
+A detailed summary of each opportunity, including name, revenue, account details, upsell potential, and noteworthy outliers.
+Provide the output in a well-structured, detailed format such that i can make a pdf out of it divide each subheading to sections intro Content and conclusion. Avoid raw data and focus on insights.`,
       },
     ];
 
