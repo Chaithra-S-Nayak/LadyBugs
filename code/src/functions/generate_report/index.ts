@@ -167,16 +167,18 @@ ${JSON.stringify(opportunityDetails, null, 2)}
 
 Please extract the following information from each opportunity which can be present in the body:
 Account name
-Annual revenue
+Revenue from the opportunity
 Number of employees
+Opportunity owners (sales reps)
 Key insights such as trends, upsell potential, and noteworthy outliers
 
 Then, summarize the following:
-Total revenue from all closed-won opportunities.
 The total number of closed-won opportunities.
+Revenue breakdown of individual closed-won opportunity.
 The top-performing accounts.
-A detailed summary of each opportunity, including name, revenue, account details, upsell potential, and noteworthy outliers.
-Provide the output in a well-structured, detailed format such that i can make a pdf out of it divide each subheading to sections intro Content and conclusion. Avoid raw data and focus on insights.`,
+The top-performing sales reps.
+A detailed summary of each opportunity, including name, revenue, account details, upsell potential and conclude with noteworthy outliers.
+Provide the output in a well-structured, detailed format. Avoid raw data and focus on insights.`,
       },
     ];
 
@@ -288,16 +290,13 @@ const createPDFReport = async (beautifiedSummary: string, chartImageBase64: stri
   let currentPage: any = null;
   let pageNumber = 1;
 
-  // Embed fonts
   const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const regularFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
-  // Function to add header and footer to a page
   const addHeaderFooter = (page: any, pageNumber: number, boldFont: any, regularFont: any) => {
     const headerText = 'Business Opportunities Report';
     const footerText = `Page ${pageNumber}`;
 
-    // Add header
     page.drawText(headerText, {
       x: 50,
       y: 780,
@@ -306,7 +305,6 @@ const createPDFReport = async (beautifiedSummary: string, chartImageBase64: stri
       color: rgb(0, 0, 0),
     });
 
-    // Add footer
     const footerWidth = regularFont.widthOfTextAtSize(footerText, 10);
     const footerX = (page.getWidth() - footerWidth) / 2;
     page.drawText(footerText, {
@@ -318,7 +316,6 @@ const createPDFReport = async (beautifiedSummary: string, chartImageBase64: stri
     });
   };
 
-  // Helper function to wrap text within the max width
   const wrapText = (text: string, font: any, maxWidth: number, fontSize: number): string[] => {
     const words = text.split(' ');
     const lines: string[] = [];
@@ -340,7 +337,6 @@ const createPDFReport = async (beautifiedSummary: string, chartImageBase64: stri
     return lines;
   };
 
-  // Function to create a new page
   const createNewPage = () => {
     const page = pdfDoc.addPage([pageWidth, pageHeight]);
     yPosition = maxContentHeight;
@@ -349,11 +345,14 @@ const createPDFReport = async (beautifiedSummary: string, chartImageBase64: stri
     return page;
   };
 
-  // Add the first page
   currentPage = createNewPage();
 
-  // Process and write content
   for (const line of pageContent) {
+    if (line.trim() === '') {
+      yPosition -= lineSpacing * 0.5;
+      continue;
+    }
+
     if (yPosition - lineSpacing < margin) {
       currentPage = createNewPage();
     }
@@ -404,7 +403,10 @@ const beautifySummary = (summary: string): string => {
     .replace(/\*(.*?)\*/g, '$1')
     .replace(/__([^_]+)__/g, '$1')
     .replace(/_(.*?)_/g, '$1')
-    .replace(/`([^`]+)`/g, '$1');
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/-\s+/g, '')
+    .replace(/\n{2,}/g, '\n\n')
+    .trim();
 
   return cleanedSummary;
 };

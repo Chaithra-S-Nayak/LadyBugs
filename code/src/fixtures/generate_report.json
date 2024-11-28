@@ -58,7 +58,7 @@
           "type": "opportunity"
         }
       },
-      "parameters": "general 5d 5h red"
+      "parameters": "devrev-snap-ins 5d 5h red"
     },
     "context": {
       "dev_oid": "don:identity:dvrv-us-1:devo/XXXXXX",
