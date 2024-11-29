@@ -1,36 +1,26 @@
-version: "1"
+version: "2"
 name: "Opportunity Summarizer"
 description: "Generate a summary report of opportunities within the specified timeframe."
+
+service_account:
+  display_name: DevRev Bot
 
 keyrings:
   organization:
     - name: slack_oauth_token
       display_name: Slack OAuth Token
-      description: OAuth token to authenticate Slack API requests for user authentication, channels, and messaging.
+      description: OAuth token to authenticate Slack API requests.
       types:
-        - secrets
+        - snap_in_secret
     - name: llm_api_token
       display_name: LLM API Token
       description: Token to authenticate with the shared LLM model.
       types:
-        - secrets
-
-service_account:
-  display_name: DevRev Bot
-
-inputs:
-  organization:
-    - name: default_slack_channel
-      description: Default Slack channel to post summaries.
-      field_type: text
-      is_required: false
-      default_value: "#general"
-      ui:
-        display_name: Default Slack Channel
+        - snap_in_secret
 
 functions:
   - name: generate_report
-    description: function to trigger on /report command
+    description: Function to trigger on /report command
 
 commands:
   - name: report
@@ -40,5 +30,7 @@ commands:
       - surface: discussions
         object_types:
           - opportunity
-    usage_hint: "[timeframe] [slack_channel] [chart_color]"
+          - issue
+          - ticket
+    usage_hint: "[channel] [nd] [nh] [color]"
     function: generate_report

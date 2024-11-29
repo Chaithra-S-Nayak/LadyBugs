@@ -9,7 +9,7 @@
     "build": "rimraf ./dist && tsc",
     "build:watch": "tsc --watch",
     "prepackage": "npm run build",
-    "package": "tar -cvzf build.tar.gz dist package.json package-lock.json .npmrc",
+    "package": "tar --exclude='node_modules' -cvzf build.tar.gz dist package.json package-lock.json .npmrc",
     "start": "ts-node src/main.ts --functionName=generate_report --fixturePath=generate_report.json",
     "start:watch": "nodemon src/main.ts",
     "start:production": "node dist/main.js",
@@ -57,8 +57,9 @@
   "dependencies": {
     "@devrev/typescript-sdk": "1.1.27",
     "@slack/web-api": "7.7.0",
+    "canvas": "3.0.0-rc2",
+    "chart.js": "4.4.6",
     "openai": "4.73.0",
-    "pdf-lib": "1.17.1",
-    "protobufjs": "7.3.0"
+    "pdf-lib": "1.17.1"
   }
 }

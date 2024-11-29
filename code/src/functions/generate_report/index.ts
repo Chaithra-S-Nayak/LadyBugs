@@ -1,10 +1,15 @@
-// import { betaSDK, client } from '@devrev/typescript-sdk';
+import { betaSDK, client } from '@devrev/typescript-sdk';
 import { WebClient } from '@slack/web-api';
+import { createCanvas } from 'canvas';
+import Chart, { ChartItem } from 'chart.js/auto';
 import OpenAI from 'openai';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
-import prettier from 'prettier';
 
-const axios = require('axios');
+interface TimeParams {
+  days?: number;
+  hours?: number;
+  totalHours: number;
+}
 
 interface Opportunity {
   type: any;
@@ -22,8 +27,6 @@ interface Opportunity {
   tags: any;
   title: any;
   id: string;
-  name: string;
-  revenue: number;
 }
 
 interface OpenAIMessage {
@@ -31,66 +34,56 @@ interface OpenAIMessage {
   content: string;
 }
 
-const getParameters = (paramString: string): string[] => {
-  const paramList = paramString.split(' ');
-  if (paramList.length !== 3) {
-    throw new Error('Invalid Parameters');
+const parseTimeParameters = (timeString: string): TimeParams => {
+  const daysMatch = timeString.match(/(\d+)d/);
+  const hoursMatch = timeString.match(/(\d+)h/);
+  const days = daysMatch ? parseInt(daysMatch[1]) : 0;
+  const hours = hoursMatch ? parseInt(hoursMatch[1]) : 0;
+
+  if (!days && !hours) {
+    throw new Error('Invalid time format. Use format: [Nd][Nh] (e.g. 1d 2h, 24h, 2d)');
   }
-  const [timeframe, channel, color] = paramList;
-  return [timeframe, channel, color];
+
+  return {
+    days: days || undefined,
+    hours: hours || undefined,
+    totalHours: days * 24 + hours,
+  };
 };
 
-const verifyChannel = async (channelName: string, slackClient: WebClient): Promise<boolean> => {
-  try {
-    // Fetch the list of channels
-    let result;
-    try {
-      result = await slackClient.conversations.list();
-    } catch (error) {
-      console.error('Error fetching channels list:', error);
-      throw error;
-    }
+const parseInput = (
+  input: string
+): {
+  channel: string;
+  timeParams: TimeParams;
+  color: string;
+} => {
+  const parts = input.trim().split(' ');
 
-    if (result.ok && result.channels) {
-      // Check if the channel name exists in the list
-      const channelExists = result.channels.some((channel) => channel.name === channelName);
-      // console.log('Channel exists:', channelExists, 'Channel lists:', result.channels);
-      return channelExists;
-    } else {
-      throw new Error('Failed to fetch channels list');
-    }
-  } catch (error) {
-    console.error('Error verifying channel:', error);
-    throw error;
+  if (parts.length < 3 || parts.length > 4) {
+    throw new Error('Invalid input format');
   }
+
+  const channel = parts[0];
+  const color = parts[parts.length - 1];
+  const timeString = parts.slice(1, -1).join('');
+  const timeParams = parseTimeParameters(timeString);
+
+  return {
+    channel,
+    timeParams,
+    color,
+  };
 };
 
-const getOpportunities = async (timeframe: number, devrevPAT: string): Promise<any[]> => {
+const getOpportunities = async (timeframe: number, devrevSDK: any) => {
   try {
-    // Fetch opportunities
-    const endpoint = 'https://api.devrev.ai/works.list';
-    const params = {
+    const opp = await devrevSDK.worksList({
       limit: 100,
-      type: 'opportunity',
-      // actual_close_date: new Date(Date.now() - timeframe * 60 * 60 * 1000).toISOString(),
-      // Commenting out filters for now
-      // 'filters[opportunity.subtype]': 'closed-won', // Adjust this based on the correct filter parameter
-      // 'filters[updated_at][after]': new Date(Date.now() - timeframe * 60 * 60 * 1000).toISOString()
-    };
+      type: [betaSDK.WorkType.Opportunity],
+    });
 
-    const headers = {
-      Authorization: `eyJhbGciOiJSUzI1NiIsImlzcyI6Imh0dHBzOi8vYXV0aC10b2tlbi5kZXZyZXYuYWkvIiwia2lkIjoic3RzX2tpZF9yc2EiLCJ0eXAiOiJKV1QifQ.eyJhdWQiOlsiamFudXMiXSwiYXpwIjoiZG9uOmlkZW50aXR5OmR2cnYtaW4tMTpkZXZvLzJHSWxVbGo3RkY6ZGV2dS8yIiwiZXhwIjoxNzYzOTc4ODI3LCJodHRwOi8vZGV2cmV2LmFpL2F1dGgwX3VpZCI6ImRvbjppZGVudGl0eTpkdnJ2LXVzLTE6ZGV2by9zdXBlcjphdXRoMF91c2VyL2dvb2dsZS1vYXV0aDJ8MTA5NDAyMjA4MzU2OTI5NTIwMDY0IiwiaHR0cDovL2RldnJldi5haS9hdXRoMF91c2VyX2lkIjoiZ29vZ2xlLW9hdXRoMnwxMDk0MDIyMDgzNTY5Mjk1MjAwNjQiLCJodHRwOi8vZGV2cmV2LmFpL2Rldm9fZG9uIjoiZG9uOmlkZW50aXR5OmR2cnYtaW4tMTpkZXZvLzJHSWxVbGo3RkYiLCJodHRwOi8vZGV2cmV2LmFpL2Rldm9pZCI6IkRFVi0yR0lsVWxqN0ZGIiwiaHR0cDovL2RldnJldi5haS9kZXZ1aWQiOiJERVZVLTIiLCJodHRwOi8vZGV2cmV2LmFpL2Rpc3BsYXluYW1lIjoibm5tMjJjYzAxMSIsImh0dHA6Ly9kZXZyZXYuYWkvZW1haWwiOiJubm0yMmNjMDExQG5tYW1pdC5pbiIsImh0dHA6Ly9kZXZyZXYuYWkvZnVsbG5hbWUiOiJOTk0yMkNDMDExIENIQUlUSFJBIFMgTkFZQUsiLCJodHRwOi8vZGV2cmV2LmFpL2lzX3ZlcmlmaWVkIjp0cnVlLCJodHRwOi8vZGV2cmV2LmFpL3Rva2VudHlwZSI6InVybjpkZXZyZXY6cGFyYW1zOm9hdXRoOnRva2VuLXR5cGU6cGF0IiwiaWF0IjoxNzMyNDQyODI3LCJpc3MiOiJodHRwczovL2F1dGgtdG9rZW4uZGV2cmV2LmFpLyIsImp0aSI6ImRvbjppZGVudGl0eTpkdnJ2LWluLTE6ZGV2by8yR0lsVWxqN0ZGOnRva2VuL3cxYjFoZnBtIiwib3JnX2lkIjoib3JnX0t0U3F1elNtd3AwVnluaUgiLCJzdWIiOiJkb246aWRlbnRpdHk6ZHZydi1pbi0xOmRldm8vMkdJbFVsajdGRjpkZXZ1LzIifQ.pnFsZ9SS4iqZ4UbFNSLR27uFKJHRNP60OvWVmk83QMjg4y_LjWOa9srRaoxmKSTJGYrQo4FXnLICX5Fog6KuLHqYXbrfTTPhqJjgxBoTq_7lYxz_eAY0aaY7RC04GVu_h3O1qrFI53bFPw7TDIWAhckxqHSFbEC9o3h4CGSJhwfCz5_PI-uj_sCB--2Hiq591SCBjYUrGXvO_Hl4wTS6Y_NmuMD6booOEz3U5nToKxIVR9u97Ad1kZv0EcPsIP_wQlFHmmA1C-_VPJfnAUkPt2YbBrmDud3Cy1X279Qi1dRx2_5xqfduRtUGDNlHPBAa6nMheFgE1mO2SYMoRGrfcQ`,
-      Accept: 'application/json',
-      'User-Agent': 'axios/1.7.7',
-    };
-
-    const response = await axios.get(endpoint, { params, headers });
-    const data = response.data;
-
-    // Extract opportunities from the response
-    const opportunities = data.works;
-
-    // Ensure opportunities is an array
+    const opportunities = opp.data.works;
     if (!Array.isArray(opportunities)) {
       throw new Error('Expected an array of opportunities');
     }
@@ -101,7 +94,8 @@ const getOpportunities = async (timeframe: number, devrevPAT: string): Promise<a
       const timeframeDate = new Date(Date.now() - timeframe * 60 * 60 * 1000);
       return closeDate >= timeframeDate;
     });
-    console.log('API Response:', filteredOpportunitiesWithinTimeframe);
+
+    console.log('API Response:', JSON.stringify(filteredOpportunitiesWithinTimeframe, null, 2));
     return filteredOpportunitiesWithinTimeframe;
   } catch (error) {
     console.error('Error fetching opportunities:');
@@ -170,23 +164,28 @@ const generateSummary = async (opportunities: Opportunity[], llmApiKey: string):
 Opportunities:
 ${JSON.stringify(opportunityDetails, null, 2)}
 
-Please summarize the following:
-1. Total revenue from all closed-won opportunities.
-2. The top customer by revenue.
-3. The total number of closed-won opportunities.
-4. A concise summary of each opportunity, including name, revenue, owner, customer, tickets, and discussions.
+Please extract the following information from each opportunity which can be present in the body:
+Account name
+Revenue from the opportunity
+Number of employees
+Opportunity owners (sales reps)
+Key insights such as trends, upsell potential, and noteworthy outliers
 
-Provide the output in a well-structured, brief format such that i can make a pdf out of it divide each subheading to sections intro Content and conclusion. Avoid raw data and focus on insights.`,
+Then, summarize the following:
+The total number of closed-won opportunities.
+Revenue breakdown of individual closed-won opportunity.
+The top-performing accounts.
+The top-performing sales reps.
+A detailed summary of each opportunity, including name, revenue, account details, upsell potential and conclude with noteworthy outliers.
+Provide the output in a well-structured, detailed format. Avoid raw data and focus on insights.`,
       },
     ];
 
-    // Call OpenAI to generate the summary
     const response = await openai.chat.completions.create({
       model: 'gpt-4o',
       messages: messages,
       max_tokens: 1000,
     });
-    // console.log('OpenAI Response:', response.choices[0]?.message?.content);
     return response.choices[0]?.message?.content || 'Summary generation failed.';
   } catch (error) {
     console.error('Error generating summary:', error);
@@ -194,47 +193,240 @@ Provide the output in a well-structured, brief format such that i can make a pdf
   }
 };
 
-// Function to create a PDF report
-const createPDFReport = async (beautifiedSummary: string): Promise<Uint8Array> => {
-  // Create a new PDF document
-  const pdfDoc = await PDFDocument.create();
+const verifyChannel = async (channelName: string, slackClient: WebClient): Promise<boolean> => {
+  try {
+    let result;
+    try {
+      result = await slackClient.conversations.list();
+    } catch (error) {
+      console.error('Error fetching channels list:', error);
+      throw error;
+    }
 
-  // Split content into pages if needed
+    if (result.ok && result.channels) {
+      const channelExists = result.channels.some((channel) => channel.name === channelName);
+      return channelExists;
+    } else {
+      throw new Error('Failed to fetch channels list');
+    }
+  } catch (error) {
+    console.error('Error verifying channel:', error);
+    throw error;
+  }
+};
+
+// Function to get opportunity owner counts by stage
+const getOpportunityOwnerCountsByStage = (
+  opportunities: Opportunity[]
+): {
+  [owner: string]: { closed_won_count: number; closed_lost_count: number };
+  globalCounts: { closed_won_count: number; closed_lost_count: number };
+} => {
+  // Initialize the object to hold owner-wise counts and global counts
+  const ownerStageCounts: {
+    [owner: string]: { closed_won_count: number; closed_lost_count: number };
+    globalCounts: { closed_won_count: number; closed_lost_count: number };
+  } = {
+    globalCounts: {
+      closed_won_count: 0,
+      closed_lost_count: 0,
+    },
+  };
+
+  opportunities.forEach((opp) => {
+    const owner = opp.owned_by[0]?.full_name.trim().toLowerCase();
+    if (owner) {
+      // Initialize owner data if it doesn't exist
+      if (!ownerStageCounts[owner]) {
+        ownerStageCounts[owner] = { closed_won_count: 0, closed_lost_count: 0 };
+      }
+
+      // Update the counts based on the opportunity stage
+      if (opp.stage?.name === 'closed_won') {
+        ownerStageCounts[owner].closed_won_count += 1;
+        ownerStageCounts.globalCounts.closed_won_count += 1;
+      } else if (opp.stage?.name === 'closed_lost') {
+        ownerStageCounts[owner].closed_lost_count += 1;
+        ownerStageCounts.globalCounts.closed_lost_count += 1;
+      }
+    }
+  });
+
+  console.log('Owner counts:', ownerStageCounts);
+
+  return ownerStageCounts;
+};
+
+// Function to generate a bar chart from owner counts
+const generateOpportunityStackedBarChart = (
+  ownerCounts: { [owner: string]: { closed_won_count: number; closed_lost_count: number } },
+  globalCounts: { closed_won_count: number; closed_lost_count: number }
+): string => {
+  const width = 400;
+  const height = 400;
+  const canvas = createCanvas(width, height);
+  const ctx = canvas.getContext('2d');
+  const owners = Object.keys(ownerCounts).filter(
+    (owner) => owner !== 'closed_won_count' && owner !== 'closed_lost_count'
+  );
+  const wonCounts = owners.map((owner) => ownerCounts[owner]?.closed_won_count || 0);
+  const lostCounts = owners.map((owner) => ownerCounts[owner]?.closed_lost_count || 0);
+
+  const chartData = {
+    labels: owners,
+    datasets: [
+      {
+        label: 'Won Opportunities',
+        data: wonCounts,
+        backgroundColor: '#4caf50',
+        stack: 'stack1',
+      },
+      {
+        label: 'Lost Opportunities',
+        data: lostCounts,
+        backgroundColor: '#f44336',
+        stack: 'stack1',
+      },
+    ],
+  };
+
+  new Chart(ctx as unknown as ChartItem, {
+    type: 'bar',
+    data: chartData,
+  });
+
+  return canvas.toDataURL();
+};
+
+// Function to get the count of opportunities by owner
+const getOpportunityOwnerCounts = (opportunities: Opportunity[]): { [owner: string]: number } => {
+  const ownerCounts: { [owner: string]: number } = {};
+
+  opportunities.forEach((opp) => {
+    if (opp.stage?.name === 'closed_won') {
+      const owner = opp.owned_by[0]?.full_name.trim().toLowerCase();
+      if (owner) {
+        ownerCounts[owner] = (ownerCounts[owner] || 0) + 1;
+      }
+    }
+  });
+
+  console.log('Owner closed_won counts:', ownerCounts);
+
+  return ownerCounts;
+};
+
+// Function to generate a doughnut chart from owner counts
+const generateDoughnutChart = (ownerCounts: { [owner: string]: number }): string => {
+  const width = 400;
+  const height = 400;
+  const canvas = createCanvas(width, height);
+  const ctx = canvas.getContext('2d');
+
+  const data = {
+    labels: Object.keys(ownerCounts),
+    datasets: [
+      {
+        data: Object.values(ownerCounts),
+        backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56', '#FF5733', '#C70039'],
+      },
+    ],
+  };
+
+  new Chart(ctx as unknown as ChartItem, {
+    type: 'doughnut',
+    data,
+  });
+
+  return canvas.toDataURL();
+};
+
+// Function to create a PDF report
+const createPDFReport = async (
+  beautifiedSummary: string,
+  chartImageBase64_1: string,
+  chartImageBase64_2: string
+): Promise<Uint8Array> => {
+  const pdfDoc = await PDFDocument.create();
   const pageContent = beautifiedSummary.split('\n');
   const bodyFontSize = 12;
   const lineSpacing = 14;
   const margin = 50;
   const pageHeight = 800;
   const pageWidth = 600;
-  const maxContentHeight = pageHeight - 100; // Adjust for header/footer
-  let yPosition = maxContentHeight; // Start position for the content
-
+  const maxContentHeight = pageHeight - 100;
+  let yPosition = maxContentHeight;
   let currentPage: any = null;
   let pageNumber = 1;
 
-  // Embed fonts
   const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const regularFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
-  // Function to create a new page
+  const addHeaderFooter = (page: any, pageNumber: number, boldFont: any, regularFont: any) => {
+    const headerText = 'Business Opportunities Report';
+    const footerText = `Page ${pageNumber}`;
+
+    page.drawText(headerText, {
+      x: 50,
+      y: 780,
+      font: boldFont,
+      size: 14,
+      color: rgb(0, 0, 0),
+    });
+
+    const footerWidth = regularFont.widthOfTextAtSize(footerText, 10);
+    const footerX = (page.getWidth() - footerWidth) / 2;
+    page.drawText(footerText, {
+      x: footerX,
+      y: 20,
+      font: regularFont,
+      size: 10,
+      color: rgb(0, 0, 0),
+    });
+  };
+
+  const wrapText = (text: string, font: any, maxWidth: number, fontSize: number): string[] => {
+    const words = text.split(' ');
+    const lines: string[] = [];
+    let currentLine = '';
+
+    for (const word of words) {
+      const testLine = currentLine ? `${currentLine} ${word}` : word;
+      const testLineWidth = font.widthOfTextAtSize(testLine, fontSize);
+
+      if (testLineWidth <= maxWidth) {
+        currentLine = testLine;
+      } else {
+        if (currentLine) lines.push(currentLine);
+        currentLine = word;
+      }
+    }
+
+    if (currentLine) lines.push(currentLine);
+    return lines;
+  };
+
   const createNewPage = () => {
     const page = pdfDoc.addPage([pageWidth, pageHeight]);
-    yPosition = maxContentHeight; // Reset y-position
+    yPosition = maxContentHeight;
     addHeaderFooter(page, pageNumber, boldFont, regularFont);
     pageNumber += 1;
     return page;
   };
 
-  // Add the first page
   currentPage = createNewPage();
 
-  // Process and write content
   for (const line of pageContent) {
-    if (yPosition - lineSpacing < margin) {
-      currentPage = createNewPage(); // Create a new page if out of space
+    if (line.trim() === '') {
+      yPosition -= lineSpacing * 0.5;
+      continue;
     }
 
-    const isHeading = /^##/.test(line) || /^###/.test(line); // Detect subheadings
+    if (yPosition - lineSpacing < margin) {
+      currentPage = createNewPage();
+    }
+
+    const isHeading = /^##/.test(line) || /^###/.test(line);
     const font = isHeading ? boldFont : regularFont;
     const wrappedLines = wrapText(line, font, pageWidth - 2 * margin, bodyFontSize);
 
@@ -246,107 +438,62 @@ const createPDFReport = async (beautifiedSummary: string): Promise<Uint8Array> =
         size: bodyFontSize,
         color: rgb(0, 0, 0),
       });
-      yPosition -= lineSpacing; // Move down for the next line
+      yPosition -= lineSpacing;
     }
   }
+  const base64Data_1 = chartImageBase64_1.replace(/^data:image\/png;base64,/, '');
+  const base64Data_2 = chartImageBase64_2.replace(/^data:image\/png;base64,/, '');
+  const doughnutChart_1 = await pdfDoc.embedPng(Buffer.from(base64Data_1, 'base64'));
+  const barChart_1 = await pdfDoc.embedPng(Buffer.from(base64Data_2, 'base64'));
 
-  // Save the PDF document to bytes
+  if (yPosition - 200 < margin) {
+    currentPage = createNewPage();
+  }
+
+  currentPage.drawImage(doughnutChart_1, {
+    x: 75,
+    y: yPosition - 200,
+    width: 400,
+    height: 200,
+  });
+
+  yPosition -= 200;
+
+  if (yPosition - 200 < margin) {
+    currentPage = createNewPage();
+  }
+
+  currentPage.drawImage(barChart_1, {
+    x: 75,
+    y: yPosition - 200,
+    width: 400,
+    height: 200,
+  });
   return await pdfDoc.save();
 };
 
-// Function to add header and footer to a page
-const addHeaderFooter = (page: any, pageNumber: number, boldFont: any, regularFont: any) => {
-  const headerText = 'Business Opportunities Report';
-  const footerText = `Page ${pageNumber}`;
-
-  // Add header
-  page.drawText(headerText, {
-    x: 50,
-    y: 780,
-    font: boldFont,
-    size: 14,
-    color: rgb(0, 0, 0),
-  });
-
-  // Add footer
-  const footerWidth = regularFont.widthOfTextAtSize(footerText, 10);
-  const footerX = (page.getWidth() - footerWidth) / 2; // Center the footer
-  page.drawText(footerText, {
-    x: footerX,
-    y: 20,
-    font: regularFont,
-    size: 10,
-    color: rgb(0, 0, 0),
-  });
-};
-
-// Helper function to wrap text within the max width
-const wrapText = (text: string, font: any, maxWidth: number, fontSize: number): string[] => {
-  const words = text.split(' ');
-  const lines: string[] = [];
-  let currentLine = '';
-
-  for (const word of words) {
-    const testLine = currentLine ? `${currentLine} ${word}` : word;
-    const testLineWidth = font.widthOfTextAtSize(testLine, fontSize);
-
-    if (testLineWidth <= maxWidth) {
-      currentLine = testLine; // Add word to the current line
-    } else {
-      if (currentLine) lines.push(currentLine); // Push the completed line
-      currentLine = word; // Start a new line with the word
-    }
-  }
-
-  if (currentLine) lines.push(currentLine); // Push the last line
-  return lines;
-};
-
-// Function to beautify the summary (remove unnecessary markdown and make headings bold)
 const beautifySummary = (summary: string): string => {
   const cleanedSummary = summary
-    .replace(/(#+\s?)/g, '') // Remove Markdown headers (e.g., # Header)
-    .replace(/\*\*(.*?)\*\*/g, '$1') // Remove bold (**text** becomes text)
-    .replace(/\*(.*?)\*/g, '$1') // Remove italic (*text* becomes text)
-    .replace(/__([^_]+)__/g, '$1') // Remove bold underscores (__text__ becomes text)
-    .replace(/_(.*?)_/g, '$1') // Remove italic underscores (_text_ becomes text)
-    .replace(/`([^`]+)`/g, '$1'); // Remove inline code (`text` becomes text)
+    .replace(/(#+\s?)/g, '')
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/\*(.*?)\*/g, '$1')
+    .replace(/__([^_]+)__/g, '$1')
+    .replace(/_(.*?)_/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/-\s+/g, '')
+    .replace(/\n{2,}/g, '\n\n')
+    .trim();
 
-  // Prettify the cleaned summary
-  return prettier.format(cleanedSummary, { parser: 'markdown' });
+  return cleanedSummary;
 };
-
-async function uploadFileToSlack(pdfBytes: Uint8Array, channelName: string, slackClient: WebClient) {
-  try {
-    const channelId = await getChannelIdByName(channelName, slackClient);
-    if (!channelId) {
-      throw new Error(`Channel ID for ${channelName} not found.`);
-    }
-    await slackClient.conversations.join({ channel: channelId });
-    const buffer = Buffer.from(pdfBytes); // Define the buffer variable
-    const response = await slackClient.files.uploadV2({
-      channels: channelId, // Ensure this is the channel ID
-      file: buffer,
-      filename: 'Business_Opportunities_Report.pdf',
-      filetype: 'pdf',
-      title: 'Business Opportunities Report',
-    });
-    console.log('File uploaded:', response);
-  } catch (error: any) {
-    // Type the error object
-    console.error('Error uploading file:', error.response?.data || error.message);
-    throw error;
-  }
-}
 
 async function getChannelIdByName(channelName: string, slackClient: WebClient) {
   try {
     const response = await slackClient.conversations.list();
     if (response.ok) {
-      // Find the channel by its name
       const channel = response.channels?.find((c) => c.name === channelName);
       if (channel) {
-        return channel.id; // Return the channel ID
+        return channel.id;
       } else {
         throw new Error(`Channel "${channelName}" not found.`);
       }
@@ -359,70 +506,87 @@ async function getChannelIdByName(channelName: string, slackClient: WebClient) {
   }
 }
 
-const generate_report = async (event: any) => {
-  // Step 1: Validate inputs
-  const devrevPAT = event.context.secrets['service_account_token'];
-  const slackToken = event.context.secrets['slack_api_token'];
-  const llmApiKey = event.context.secrets['llm_api_token'];
-  const endpoint = event.execution_metadata.devrev_endpoint;
-
-  if (!devrevPAT || !slackToken || !llmApiKey) {
-    throw new Error('Missing required secrets: service_account_token, slack_api_token, or llm_api_token.');
-  }
-
-  // Step 2: Initialize DevRev SDK
-  // const devrevSDK = client.setup({
-  //   endpoint: endpoint,
-  //   token: devrevPAT,
-  // });
-
-  const slackClient = new WebClient(slackToken);
-
-  // Validate command parameters
-  const commandParams = event.payload['parameters'];
-  if (!commandParams) {
-    throw new Error('No parameters provided in the event payload.');
-  }
-
-  const [timeframeRaw, channelRaw, color] = getParameters(commandParams.trim());
-  const timeframe = parseInt(timeframeRaw.trim());
-  const channel = channelRaw.trim();
-
-  console.log('Timeframe:', timeframe, 'Channel:', channel, 'Color:', color);
-  if (isNaN(timeframe) || timeframe <= 0) {
-    throw new Error('Invalid timeframe provided.');
-  }
-
-  // Verify if channel is valid
-  const isChannelValid = await verifyChannel(channel, slackClient);
-
-  if (!isChannelValid) {
-    throw new Error(`The channel ${channel} does not exist or is not accessible.`);
-  }
-
-  // Fetch opportunities
-  const opportunities: Opportunity[] = await getOpportunities(timeframe, devrevPAT);
-
-  if (!opportunities || opportunities.length === 0) {
-    throw new Error(`No opportunities found in the last ${timeframe} hours.`);
-  }
-
+async function uploadFileToSlack(pdfBytes: Uint8Array, channelName: string, slackClient: WebClient) {
   try {
-    // Generate summary (from previous code or API)
+    const channelId = await getChannelIdByName(channelName, slackClient);
+    if (!channelId) {
+      throw new Error(`Channel ID for ${channelName} not found.`);
+    }
+    await slackClient.conversations.join({ channel: channelId });
+    const buffer = Buffer.from(pdfBytes);
+    const response = await slackClient.files.uploadV2({
+      channel_id: channelId,
+      file: buffer,
+      filename: 'Business_Opportunities_Report.pdf',
+      title: 'Business Opportunities Report',
+    });
+    // console.log('File uploaded:', response);
+  } catch (error: any) {
+    console.error('Error uploading file:', error.response?.data || error.message);
+    throw error;
+  }
+}
+
+const generate_report = async (event: any) => {
+  try {
+    // Validate inputs
+    const devrevPAT = event.context.secrets['service_account_token'];
+    const slackToken = event.input_data.keyrings['slack_oauth_token'];
+    const llmApiKey = event.input_data.keyrings['llm_api_token'];
+    const endpoint = event.execution_metadata.devrev_endpoint;
+
+    // Initialize DevRev SDK
+    const devrevSDK = client.setupBeta({
+      endpoint: endpoint,
+      token: devrevPAT,
+    });
+
+    // Parse input
+    const commandParams = event.payload['parameters'];
+    if (!commandParams) {
+      throw new Error('No parameters provided in the event payload.');
+    }
+    const parsedInput = parseInput(commandParams.trim());
+    const { channel, timeParams, color } = parsedInput;
+    const timeframe = timeParams.totalHours;
+    console.info('Timeframe:', timeframe, 'Channel:', channel, 'Color:', color);
+    console.error('Timeframe:', timeframe, 'Channel:', channel, 'Color:', color);
+    if (timeframe <= 0) {
+      throw new Error('Invalid timeframe provided.');
+    }
+
+    // Get opportunities
+    const opportunities = await getOpportunities(timeframe, devrevSDK);
+    if (!opportunities || opportunities.length === 0) {
+      throw new Error(`No opportunities found in the last ${timeframe} hours.`);
+    }
+
+    // Generate a summary of the opportunities
     const summary = await generateSummary(opportunities, llmApiKey);
 
     // Beautify the summary
     const beautifiedSummary = beautifySummary(summary);
     console.log(beautifiedSummary);
 
+    // Initialize the Slack client
+    const slackClient = new WebClient(slackToken);
+    const isChannelValid = await verifyChannel(channel, slackClient);
+    if (!isChannelValid) {
+      throw new Error(`The channel ${channel} does not exist or is not accessible.`);
+    }
+
     // Create the PDF report
-    const pdfBytes = await createPDFReport(beautifiedSummary);
+    const ownerCounts = getOpportunityOwnerCounts(opportunities);
+    const chartImageBase64_1 = generateDoughnutChart(ownerCounts);
+    const ownerByStageCounts = getOpportunityOwnerCountsByStage(opportunities);
+    const chartImageBase64_2 = generateOpportunityStackedBarChart(ownerByStageCounts, ownerByStageCounts.globalCounts);
+    const pdfBytes = await createPDFReport(beautifiedSummary, chartImageBase64_1, chartImageBase64_2);
 
     // Upload the generated PDF to Slack
     const slackResponse = await uploadFileToSlack(pdfBytes, channel, slackClient);
-    console.log('Slack response:', slackResponse);
+    // console.log('Slack response:', slackResponse);
   } catch (error) {
-    console.error('Error generating and uploading report:', error);
+    console.error('ERROR IN GENERATE_REPORT FUNCTION !!!', error);
     throw error;
   }
 };
