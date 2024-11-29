@@ -70,7 +70,6 @@ ${JSON.stringify(opportunityDetails, null, 2)}
 Please extract the following information from each opportunity which can be present in the body:
 Account name
 Revenue from the opportunity
-Number of employees
 Opportunity owners (sales reps)
 Key insights such as trends, upsell potential, and noteworthy outliers
 

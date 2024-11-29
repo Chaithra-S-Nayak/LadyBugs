@@ -23,7 +23,7 @@ export async function uploadFileToSlack(pdfBytes: Uint8Array, channelName: strin
     const slackClient = new WebClient(slackToken);
     const channelId = await getChannelIdByName(channelName, slackClient);
     if (!channelId) {
-      throw new Error(`Channel ID for ${channelName} not found.`);
+      return { ok: false, error: 'Channel not found' };
     }
     await slackClient.conversations.join({ channel: channelId });
     const buffer = Buffer.from(pdfBytes);
@@ -33,9 +33,10 @@ export async function uploadFileToSlack(pdfBytes: Uint8Array, channelName: strin
       filename: 'Business_Opportunities_Report.pdf',
       title: 'Business Opportunities Report',
     });
+    return response;
   } catch (error: any) {
     console.error('Error uploading file:', error.response?.data || error.message);
-    throw error;
+    return { ok: false, error: error.response?.data || error.message };
   }
 }
 
