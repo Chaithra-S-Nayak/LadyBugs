@@ -9,7 +9,13 @@ import {
   getOpportunityOwnerCountsByStage,
 } from './pdf_utils';
 import { uploadFileToSlack, verifyChannel } from './slack_utils';
+import { ApiUtils } from './timeline_utils';
 
+type HTTPResponse = {
+  success: boolean;
+  message: string;
+  data: any;
+};
 interface TimeParams {
   days?: number;
   hours?: number;
@@ -75,10 +81,7 @@ const parseInput = (
 // Fetch opportunities from DevRev API
 const getOpportunities = async (timeframe: number, devrevSDK: any) => {
   try {
-    const opp = await devrevSDK.worksList({
-      limit: 100,
-      type: [betaSDK.WorkType.Opportunity],
-    });
+    const opp = await devrevSDK.fetchOpportunities();
 
     const opportunities = opp.data.works;
     if (!Array.isArray(opportunities)) {
@@ -109,10 +112,9 @@ const generate_report = async (event: any) => {
     const endpoint = event.execution_metadata.devrev_endpoint;
 
     // Initialize DevRev SDK
-    const devrevSDK = client.setupBeta({
-      endpoint: endpoint,
-      token: devrevPAT,
-    });
+    const devrevSDK: ApiUtils = new ApiUtils(endpoint, devrevPAT);
+    let commentID: string | undefined;
+    const sourceId = event.payload['source_id'];
 
     // Get defaults from global values
     const defaultChannel = event.input_data.global_values.default_slack_channel;
@@ -129,15 +131,37 @@ const generate_report = async (event: any) => {
     const timeframe = timeParams.totalHours;
     console.info('Timeframe:', timeframe, 'Channel:', channel);
     if (timeframe <= 0) {
-      throw new Error('Invalid timeframe provided.');
+      let postResp: HTTPResponse = await devrevSDK.postTextMessage(
+        sourceId,
+        'Please enter a valid timeframe',
+        commentID
+      );
+      if (!postResp.success) {
+        console.error(`Error while creating timeline entry: ${postResp.message}`);
+      }
+      commentID = postResp.data.timeline_entry.id;
+      return;
     }
 
     // Get opportunities
     const opportunities = await getOpportunities(timeframe, devrevSDK);
     if (!opportunities || opportunities.length === 0) {
-      throw new Error(`No opportunities found in the last ${timeframe} hours.`);
+      const helpMessage = `There are no new closed-won opportunities in the given time frame!\n\n`;
+      let postResp = await devrevSDK.postTextMessageWithVisibilityTimeout(sourceId, helpMessage, 1);
+      if (!postResp.success) {
+        throw new Error(`Error while creating timeline entry: ${postResp.message}`);
+      }
+      return;
     }
 
+    let postResp: HTTPResponse = await devrevSDK.postTextMessageWithVisibilityTimeout(
+      sourceId,
+      'Generating summary...',
+      1
+    );
+    if (!postResp.success) {
+      console.error(`Error while creating timeline entry: ${postResp.message}`);
+    }
     // Generate a summary of the opportunities
     const summary = await generateSummary(opportunities, llmApiKey);
 
@@ -148,7 +172,20 @@ const generate_report = async (event: any) => {
     // Initialize the Slack client
     const isChannelValid = await verifyChannel(channel, slackToken);
     if (!isChannelValid) {
-      throw new Error(`The channel ${channel} does not exist or is not accessible.`);
+      let postResp: HTTPResponse = await devrevSDK.postTextMessageWithVisibilityTimeout(
+        sourceId,
+        'The entered channel does not exist!',
+        1
+      );
+      if (!postResp.success) {
+        console.error(`Error while creating timeline entry: ${postResp.message}`);
+      }
+      return;
+    }
+
+    postResp = await devrevSDK.postTextMessageWithVisibilityTimeout(sourceId, `Generating PDF...`, 1);
+    if (!postResp.success) {
+      console.error(`Error while creating timeline entry: ${postResp.message}`);
     }
 
     // Create the PDF report
@@ -159,7 +196,27 @@ const generate_report = async (event: any) => {
     const pdfBytes = await createPDFReport(beautifiedSummary, chartImageBase64_1, chartImageBase64_2);
 
     // Upload the generated PDF to Slack
-    const slackResponse = await uploadFileToSlack(pdfBytes, channel, slackToken);
+    postResp = await devrevSDK.postTextMessageWithVisibilityTimeout(sourceId, `Connecting with Slack..`, 1);
+    if (!postResp.success) {
+      console.error(`Error while creating timeline entry: ${postResp.message}`);
+    }
+
+    const response = await uploadFileToSlack(pdfBytes, channel, slackToken);
+    if (!response.ok) {
+      postResp = await devrevSDK.postTextMessageWithVisibilityTimeout(sourceId, `${response.error}`, 1);
+      if (!postResp.success) {
+        console.error(`Error while creating timeline entry: ${postResp.message}`);
+      }
+      return;
+    }
+    postResp = await devrevSDK.postTextMessageWithVisibilityTimeout(
+      sourceId,
+      `Summary posted successfully on Slack!`,
+      1
+    );
+    if (!postResp.success) {
+      console.error(`Error while creating timeline entry: ${postResp.message}`);
+    }
   } catch (error) {
     console.error('Error processing the main function', error);
     throw error;
