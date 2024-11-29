@@ -52,27 +52,23 @@ const parseTimeParameters = (timeString: string): TimeParams => {
 };
 
 const parseInput = (
-  input: string
+  input: string,
+  defaults: { channel: string; timeframe: string }
 ): {
   channel: string;
   timeParams: TimeParams;
-  color: string;
 } => {
   const parts = input.trim().split(' ');
 
-  if (parts.length < 3 || parts.length > 4) {
-    throw new Error('Invalid input format');
-  }
+  // Use defaults if parts are missing
+  const isTimeframe = (part: string) => /^[0-9]+[dh]$/.test(part);
 
-  const channel = parts[0];
-  const color = parts[parts.length - 1];
-  const timeString = parts.slice(1, -1).join('');
-  const timeParams = parseTimeParameters(timeString);
+  const channel = isTimeframe(parts[0]) ? defaults.channel : parts[0] || defaults.channel;
+  const timeframe = isTimeframe(parts[0]) ? parts[0] : parts[1] || defaults.timeframe;
 
   return {
     channel,
-    timeParams,
-    color,
+    timeParams: parseTimeParameters(timeframe),
   };
 };
 
@@ -541,16 +537,20 @@ const generate_report = async (event: any) => {
       token: devrevPAT,
     });
 
+    // Get defaults from global values
+    const defaultChannel = event.input_data.global_values.default_slack_channel;
+    const defaultTimeframe = event.input_data.global_values.default_timeframe;
+
     // Parse input
     const commandParams = event.payload['parameters'];
-    if (!commandParams) {
-      throw new Error('No parameters provided in the event payload.');
-    }
-    const parsedInput = parseInput(commandParams.trim());
-    const { channel, timeParams, color } = parsedInput;
+
+    const parsedInput = parseInput(commandParams.trim() || '', {
+      channel: defaultChannel,
+      timeframe: defaultTimeframe,
+    });
+    const { channel, timeParams } = parsedInput;
     const timeframe = timeParams.totalHours;
-    console.info('Timeframe:', timeframe, 'Channel:', channel, 'Color:', color);
-    console.error('Timeframe:', timeframe, 'Channel:', channel, 'Color:', color);
+    console.info('Timeframe:', timeframe, 'Channel:', channel);
     if (timeframe <= 0) {
       throw new Error('Invalid timeframe provided.');
     }
