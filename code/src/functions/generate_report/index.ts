@@ -1,9 +1,9 @@
 import { betaSDK, client } from '@devrev/typescript-sdk';
 import { WebClient } from '@slack/web-api';
+import { createCanvas } from 'canvas';
+import Chart, { ChartItem } from 'chart.js/auto';
 import OpenAI from 'openai';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
-import { createCanvas } from 'canvas'; 
-import Chart, { ChartItem } from 'chart.js/auto'; 
 
 interface TimeParams {
   days?: number;
@@ -216,13 +216,21 @@ const verifyChannel = async (channelName: string, slackClient: WebClient): Promi
 };
 
 // Function to get opportunity owner counts by stage
-const getOpportunityOwnerCountsByStage = (opportunities: Opportunity[]): { [owner: string]: { closed_won_count: number, closed_lost_count: number }, globalCounts: { closed_won_count: number, closed_lost_count: number } } => {
+const getOpportunityOwnerCountsByStage = (
+  opportunities: Opportunity[]
+): {
+  [owner: string]: { closed_won_count: number; closed_lost_count: number };
+  globalCounts: { closed_won_count: number; closed_lost_count: number };
+} => {
   // Initialize the object to hold owner-wise counts and global counts
-  const ownerStageCounts: { [owner: string]: { closed_won_count: number, closed_lost_count: number }, globalCounts: { closed_won_count: number, closed_lost_count: number } } = {
+  const ownerStageCounts: {
+    [owner: string]: { closed_won_count: number; closed_lost_count: number };
+    globalCounts: { closed_won_count: number; closed_lost_count: number };
+  } = {
     globalCounts: {
       closed_won_count: 0,
-      closed_lost_count: 0
-    }
+      closed_lost_count: 0,
+    },
   };
 
   opportunities.forEach((opp) => {
@@ -236,10 +244,10 @@ const getOpportunityOwnerCountsByStage = (opportunities: Opportunity[]): { [owne
       // Update the counts based on the opportunity stage
       if (opp.stage?.name === 'closed_won') {
         ownerStageCounts[owner].closed_won_count += 1;
-        ownerStageCounts.globalCounts.closed_won_count += 1; 
+        ownerStageCounts.globalCounts.closed_won_count += 1;
       } else if (opp.stage?.name === 'closed_lost') {
         ownerStageCounts[owner].closed_lost_count += 1;
-        ownerStageCounts.globalCounts.closed_lost_count += 1; 
+        ownerStageCounts.globalCounts.closed_lost_count += 1;
       }
     }
   });
@@ -250,27 +258,32 @@ const getOpportunityOwnerCountsByStage = (opportunities: Opportunity[]): { [owne
 };
 
 // Function to generate a bar chart from owner counts
-const generateOpportunityStackedBarChart = (ownerCounts: { [owner: string]: { closed_won_count: number, closed_lost_count: number } }, globalCounts: { closed_won_count: number, closed_lost_count: number }): string => {
+const generateOpportunityStackedBarChart = (
+  ownerCounts: { [owner: string]: { closed_won_count: number; closed_lost_count: number } },
+  globalCounts: { closed_won_count: number; closed_lost_count: number }
+): string => {
   const width = 400;
   const height = 400;
   const canvas = createCanvas(width, height);
   const ctx = canvas.getContext('2d');
-  const owners = Object.keys(ownerCounts).filter(owner => owner !== 'closed_won_count' && owner !== 'closed_lost_count');
-  const wonCounts = owners.map(owner => ownerCounts[owner]?.closed_won_count || 0);
-  const lostCounts = owners.map(owner => ownerCounts[owner]?.closed_lost_count || 0);
+  const owners = Object.keys(ownerCounts).filter(
+    (owner) => owner !== 'closed_won_count' && owner !== 'closed_lost_count'
+  );
+  const wonCounts = owners.map((owner) => ownerCounts[owner]?.closed_won_count || 0);
+  const lostCounts = owners.map((owner) => ownerCounts[owner]?.closed_lost_count || 0);
 
   const chartData = {
-    labels: owners, 
+    labels: owners,
     datasets: [
       {
         label: 'Won Opportunities',
         data: wonCounts,
-        backgroundColor: '#4caf50', 
+        backgroundColor: '#4caf50',
         stack: 'stack1',
       },
       {
         label: 'Lost Opportunities',
-        data: lostCounts, 
+        data: lostCounts,
         backgroundColor: '#f44336',
         stack: 'stack1',
       },
@@ -284,7 +297,7 @@ const generateOpportunityStackedBarChart = (ownerCounts: { [owner: string]: { cl
       },
       y: {
         beginAtZero: true,
-        stacked: true, 
+        stacked: true,
       },
     },
     plugins: {
@@ -294,11 +307,11 @@ const generateOpportunityStackedBarChart = (ownerCounts: { [owner: string]: { cl
     },
   };
   new Chart(ctx as unknown as ChartItem, {
-    type: 'bar', 
+    type: 'bar',
     data: chartData,
   });
 
-  return canvas.toDataURL(); 
+  return canvas.toDataURL();
 };
 
 // Function to get the count of opportunities by owner
@@ -320,32 +333,36 @@ const getOpportunityOwnerCounts = (opportunities: Opportunity[]): { [owner: stri
 };
 
 // Function to generate a doughnut chart from owner counts
-  const generateDoughnutChart = (ownerCounts: { [owner: string]: number }): string => {
-    const width = 400;
-    const height = 400;
-    const canvas = createCanvas(width, height);
-    const ctx = canvas.getContext('2d');
-  
-    const data = {
-      labels: Object.keys(ownerCounts),
-      datasets: [
-        {
-          data: Object.values(ownerCounts),
-          backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56', '#FF5733', '#C70039'],
-        },
-      ],
-    };
-  
-    new Chart(ctx as unknown as ChartItem, {
-      type: 'doughnut',
-      data,
-    });
-  
-    return canvas.toDataURL();
+const generateDoughnutChart = (ownerCounts: { [owner: string]: number }): string => {
+  const width = 400;
+  const height = 400;
+  const canvas = createCanvas(width, height);
+  const ctx = canvas.getContext('2d');
+
+  const data = {
+    labels: Object.keys(ownerCounts),
+    datasets: [
+      {
+        data: Object.values(ownerCounts),
+        backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56', '#FF5733', '#C70039'],
+      },
+    ],
   };
 
+  new Chart(ctx as unknown as ChartItem, {
+    type: 'doughnut',
+    data,
+  });
+
+  return canvas.toDataURL();
+};
+
 // Function to create a PDF report
-const createPDFReport = async (beautifiedSummary: string , chartImageBase64_1: string , chartImageBase64_2 : string ): Promise<Uint8Array> => {
+const createPDFReport = async (
+  beautifiedSummary: string,
+  chartImageBase64_1: string,
+  chartImageBase64_2: string
+): Promise<Uint8Array> => {
   const pdfDoc = await PDFDocument.create();
   const pageContent = beautifiedSummary.split('\n');
   const bodyFontSize = 12;
@@ -440,34 +457,34 @@ const createPDFReport = async (beautifiedSummary: string , chartImageBase64_1: s
       yPosition -= lineSpacing;
     }
   }
-const base64Data_1 = chartImageBase64_1.replace(/^data:image\/png;base64,/, '');
-const base64Data_2 = chartImageBase64_2.replace(/^data:image\/png;base64,/, '');
-const doughnutChart_1 = await pdfDoc.embedPng(Buffer.from(base64Data_1, 'base64'));
-const barChart_1 = await pdfDoc.embedPng(Buffer.from(base64Data_2, 'base64'));
+  const base64Data_1 = chartImageBase64_1.replace(/^data:image\/png;base64,/, '');
+  const base64Data_2 = chartImageBase64_2.replace(/^data:image\/png;base64,/, '');
+  const doughnutChart_1 = await pdfDoc.embedPng(Buffer.from(base64Data_1, 'base64'));
+  const barChart_1 = await pdfDoc.embedPng(Buffer.from(base64Data_2, 'base64'));
 
-if (yPosition - 300 < margin) {
-  currentPage = createNewPage();
-}
+  if (yPosition - 200 < margin) {
+    currentPage = createNewPage();
+  }
 
-currentPage.drawImage(doughnutChart_1, {
-  x: 75,
-  y: yPosition - 300, 
-  width: 400,
-  height: 300,
-});
+  currentPage.drawImage(doughnutChart_1, {
+    x: 75,
+    y: yPosition - 200,
+    width: 400,
+    height: 200,
+  });
 
-yPosition -= 300; 
+  yPosition -= 200;
 
-if (yPosition - 300 < margin) {
-  currentPage = createNewPage();
-}
+  if (yPosition - 200 < margin) {
+    currentPage = createNewPage();
+  }
 
-currentPage.drawImage(barChart_1, {
-  x: 75,
-  y: yPosition - 300, 
-  width: 400,
-  height: 300,
-});
+  currentPage.drawImage(barChart_1, {
+    x: 75,
+    y: yPosition - 200,
+    width: 400,
+    height: 200,
+  });
   return await pdfDoc.save();
 };
 
@@ -527,71 +544,80 @@ async function uploadFileToSlack(pdfBytes: Uint8Array, channelName: string, slac
 }
 
 const generate_report = async (event: any) => {
-  // Validate inputs
-  const devrevPAT = event.context.secrets['service_account_token'];
-  const slackToken = event.context.secrets['slack_api_token'];
-  const llmApiKey = event.context.secrets['llm_api_token'];
-  const endpoint = event.execution_metadata.devrev_endpoint;
-  if (!slackToken || !llmApiKey) {
-    throw new Error('Missing required secrets: slack_api_token, or llm_api_token.');
+  try {
+    // Validate inputs
+    const devrevPAT = event.context.secrets['service_account_token'];
+    const slackToken = event.input_data.keyrings['slack_oauth_token'];
+    const llmApiKey = event.input_data.keyrings['llm_api_token'];
+    const endpoint = event.execution_metadata.devrev_endpoint;
+    if (!devrevPAT) console.error('devrevPAT is not defined');
+    if (!slackToken) console.error('slackToken is not defined');
+    if (!llmApiKey) console.error('llmApiKey is not defined');
+    if (!endpoint) console.error('endpoint is not defined');
+
+    // Initialize DevRev SDK
+    const devrevSDK = client.setupBeta({
+      endpoint: endpoint,
+      token: devrevPAT,
+    });
+
+    // Parse input
+    const commandParams = event.payload['parameters'];
+    if (!commandParams) {
+      throw new Error('No parameters provided in the event payload.');
+    }
+    const parsedInput = parseInput(commandParams.trim());
+    const { channel, timeParams, color } = parsedInput;
+    const timeframe = timeParams.totalHours;
+    console.info('Timeframe:', timeframe, 'Channel:', channel, 'Color:', color);
+    console.error('Timeframe:', timeframe, 'Channel:', channel, 'Color:', color);
+    if (timeframe <= 0) {
+      throw new Error('Invalid timeframe provided.');
+    }
+
+    // Get opportunities
+    const opportunities = await getOpportunities(timeframe, devrevSDK);
+    if (!opportunities || opportunities.length === 0) {
+      throw new Error(`No opportunities found in the last ${timeframe} hours.`);
+    }
+
+    // Generate a summary of the opportunities
+    const summary = await generateSummary(opportunities, llmApiKey);
+
+    // Beautify the summary
+    const beautifiedSummary = beautifySummary(summary);
+    console.log(beautifiedSummary);
+
+    // Initialize the Slack client
+    const slackClient = new WebClient(slackToken);
+    const isChannelValid = await verifyChannel(channel, slackClient);
+    if (!isChannelValid) {
+      throw new Error(`The channel ${channel} does not exist or is not accessible.`);
+    }
+
+    // Create the PDF report
+    const ownerCounts = getOpportunityOwnerCounts(opportunities);
+    const chartImageBase64_1 = generateDoughnutChart(ownerCounts);
+    const ownerByStageCounts = getOpportunityOwnerCountsByStage(opportunities);
+    const chartImageBase64_2 = generateOpportunityStackedBarChart(ownerByStageCounts, ownerByStageCounts.globalCounts);
+    const pdfBytes = await createPDFReport(beautifiedSummary, chartImageBase64_1, chartImageBase64_2);
+
+    // Upload the generated PDF to Slack
+    const slackResponse = await uploadFileToSlack(pdfBytes, channel, slackClient);
+    // console.log('Slack response:', slackResponse);
+  } catch (error) {
+    console.error('ERROR IN GENERATE_REPORT FUNCTION !!!', error);
+    throw error;
   }
-
-  // Initialize DevRev SDK
-  const devrevSDK = client.setupBeta({
-    endpoint: endpoint,
-    token: devrevPAT,
-  });
-
-  // Parse input
-  const commandParams = event.payload['parameters'];
-  if (!commandParams) {
-    throw new Error('No parameters provided in the event payload.');
-  }
-  const parsedInput = parseInput(commandParams.trim());
-  const { channel, timeParams, color } = parsedInput;
-  const timeframe = timeParams.totalHours;
-  console.info('Timeframe:', timeframe, 'Channel:', channel, 'Color:', color);
-  if (timeframe <= 0) {
-    throw new Error('Invalid timeframe provided.');
-  }
-
-  // Get opportunities
-  const opportunities = await getOpportunities(timeframe, devrevSDK);
-  if (!opportunities || opportunities.length === 0) {
-    throw new Error(`No opportunities found in the last ${timeframe} hours.`);
-  }
-
-  // Generate a summary of the opportunities
-  const summary = await generateSummary(opportunities, llmApiKey);
-
-  // Beautify the summary
-  const beautifiedSummary = beautifySummary(summary);
-  console.log(beautifiedSummary);
-
-  // Initialize the Slack client
-  const slackClient = new WebClient(slackToken);
-  const isChannelValid = await verifyChannel(channel, slackClient);
-  if (!isChannelValid) {
-    throw new Error(`The channel ${channel} does not exist or is not accessible.`);
-  }
-
-  // Create the PDF report
-  const ownerCounts = getOpportunityOwnerCounts(opportunities);
-  const chartImageBase64_1 = generateDoughnutChart(ownerCounts);
-  const ownerByStageCounts = getOpportunityOwnerCountsByStage(opportunities);
-  const chartImageBase64_2 = generateOpportunityStackedBarChart(ownerByStageCounts , ownerByStageCounts.globalCounts);
-  const pdfBytes = await createPDFReport(beautifiedSummary, chartImageBase64_1, chartImageBase64_2);
-
-
-  // Upload the generated PDF to Slack
-  const slackResponse = await uploadFileToSlack(pdfBytes, channel, slackClient);
-  // console.log('Slack response:', slackResponse);
 };
 
 export const run = async (events: any[]) => {
-  console.log('Events: ', JSON.stringify(events));
   for (const event of events) {
-    await generate_report(event);
+    try {
+      await generate_report(event);
+    } catch (error) {
+      console.error('RUN FUNCTION IS THROWING ERRROR', error);
+    }
   }
 };
 
