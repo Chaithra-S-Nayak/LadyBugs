@@ -1,9 +1,14 @@
 import { betaSDK, client } from '@devrev/typescript-sdk';
-import { WebClient } from '@slack/web-api';
-import { createCanvas } from 'canvas';
-import Chart, { ChartItem } from 'chart.js/auto';
-import OpenAI from 'openai';
-import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import { generateSummary } from './llm_utils';
+import {
+  beautifySummary,
+  createPDFReport,
+  generateDoughnutChart,
+  generateOpportunityStackedBarChart,
+  getOpportunityOwnerCounts,
+  getOpportunityOwnerCountsByStage,
+} from './pdf_utils';
+import { uploadFileToSlack, verifyChannel } from './slack_utils';
 
 interface TimeParams {
   days?: number;
@@ -11,7 +16,7 @@ interface TimeParams {
   totalHours: number;
 }
 
-interface Opportunity {
+export interface Opportunity {
   type: any;
   actual_close_date: any;
   body: any;
@@ -27,11 +32,6 @@ interface Opportunity {
   tags: any;
   title: any;
   id: string;
-}
-
-interface OpenAIMessage {
-  role: 'system' | 'user' | 'assistant';
-  content: string;
 }
 
 const parseTimeParameters = (timeString: string): TimeParams => {
@@ -52,30 +52,27 @@ const parseTimeParameters = (timeString: string): TimeParams => {
 };
 
 const parseInput = (
-  input: string
+  input: string,
+  defaults: { channel: string; timeframe: string }
 ): {
   channel: string;
   timeParams: TimeParams;
-  color: string;
 } => {
   const parts = input.trim().split(' ');
 
-  if (parts.length < 3 || parts.length > 4) {
-    throw new Error('Invalid input format');
-  }
+  // Use defaults if parts are missing
+  const isTimeframe = (part: string) => /^[0-9]+[dh]$/.test(part);
 
-  const channel = parts[0];
-  const color = parts[parts.length - 1];
-  const timeString = parts.slice(1, -1).join('');
-  const timeParams = parseTimeParameters(timeString);
+  const channel = isTimeframe(parts[0]) ? defaults.channel : parts[0] || defaults.channel;
+  const timeframe = isTimeframe(parts[0]) ? parts[0] : parts[1] || defaults.timeframe;
 
   return {
     channel,
-    timeParams,
-    color,
+    timeParams: parseTimeParameters(timeframe),
   };
 };
 
+// Fetch opportunities from DevRev API
 const getOpportunities = async (timeframe: number, devrevSDK: any) => {
   try {
     const opp = await devrevSDK.worksList({
@@ -103,430 +100,6 @@ const getOpportunities = async (timeframe: number, devrevSDK: any) => {
   }
 };
 
-const generateSummary = async (opportunities: Opportunity[], llmApiKey: string): Promise<string> => {
-  try {
-    const openai = new OpenAI({
-      apiKey: llmApiKey,
-    });
-
-    // Format data for OpenAI
-    const opportunityDetails = opportunities.map((opp) => ({
-      id: opp.id,
-      type: opp.type,
-      actual_close_date: opp.actual_close_date,
-      body: opp.body,
-      created_by: {
-        type: opp.created_by.type,
-        display_id: opp.created_by.display_id,
-        display_name: opp.created_by.display_name,
-        email: opp.created_by.email,
-        full_name: opp.created_by.full_name,
-        id: opp.created_by.id,
-        state: opp.created_by.state,
-      },
-      created_date: opp.created_date,
-      custom_fields: opp.custom_fields,
-      display_id: opp.display_id,
-      modified_by: {
-        type: opp.modified_by.type,
-        display_id: opp.modified_by.display_id,
-        display_name: opp.modified_by.display_name,
-        email: opp.modified_by.email,
-        full_name: opp.modified_by.full_name,
-        id: opp.modified_by.id,
-        state: opp.modified_by.state,
-      },
-      modified_date: opp.modified_date,
-      owned_by: opp.owned_by,
-      stage: {
-        name: opp.stage.name,
-        notes: opp.stage.notes,
-        ordinal: opp.stage.ordinal,
-        stage: opp.stage.stage,
-        state: opp.stage.state,
-      },
-      stock_schema_fragment: opp.stock_schema_fragment,
-      tags: opp.tags,
-      title: opp.title,
-    }));
-
-    // Create a prompt for OpenAI
-    const messages: OpenAIMessage[] = [
-      {
-        role: 'system',
-        content:
-          'You are a business assistant that generates concise summaries of sales opportunities based on provided data.',
-      },
-      {
-        role: 'user',
-        content: `Here is a summary request for closed-won opportunities:
-
-Opportunities:
-${JSON.stringify(opportunityDetails, null, 2)}
-
-Please extract the following information from each opportunity which can be present in the body:
-Account name
-Revenue from the opportunity
-Number of employees
-Opportunity owners (sales reps)
-Key insights such as trends, upsell potential, and noteworthy outliers
-
-Then, summarize the following:
-The total number of closed-won opportunities.
-Revenue breakdown of individual closed-won opportunity.
-The top-performing accounts.
-The top-performing sales reps.
-A detailed summary of each opportunity, including name, revenue, account details, upsell potential and conclude with noteworthy outliers.
-Provide the output in a well-structured, detailed format. Avoid raw data and focus on insights.`,
-      },
-    ];
-
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages: messages,
-      max_tokens: 1000,
-    });
-    return response.choices[0]?.message?.content || 'Summary generation failed.';
-  } catch (error) {
-    console.error('Error generating summary:', error);
-    throw error;
-  }
-};
-
-const verifyChannel = async (channelName: string, slackClient: WebClient): Promise<boolean> => {
-  try {
-    let result;
-    try {
-      result = await slackClient.conversations.list();
-    } catch (error) {
-      console.error('Error fetching channels list:', error);
-      throw error;
-    }
-
-    if (result.ok && result.channels) {
-      const channelExists = result.channels.some((channel) => channel.name === channelName);
-      return channelExists;
-    } else {
-      throw new Error('Failed to fetch channels list');
-    }
-  } catch (error) {
-    console.error('Error verifying channel:', error);
-    throw error;
-  }
-};
-
-// Function to get opportunity owner counts by stage
-const getOpportunityOwnerCountsByStage = (
-  opportunities: Opportunity[]
-): {
-  [owner: string]: { closed_won_count: number; closed_lost_count: number };
-  globalCounts: { closed_won_count: number; closed_lost_count: number };
-} => {
-  // Initialize the object to hold owner-wise counts and global counts
-  const ownerStageCounts: {
-    [owner: string]: { closed_won_count: number; closed_lost_count: number };
-    globalCounts: { closed_won_count: number; closed_lost_count: number };
-  } = {
-    globalCounts: {
-      closed_won_count: 0,
-      closed_lost_count: 0,
-    },
-  };
-
-  opportunities.forEach((opp) => {
-    const owner = opp.owned_by[0]?.full_name.trim().toLowerCase();
-    if (owner) {
-      // Initialize owner data if it doesn't exist
-      if (!ownerStageCounts[owner]) {
-        ownerStageCounts[owner] = { closed_won_count: 0, closed_lost_count: 0 };
-      }
-
-      // Update the counts based on the opportunity stage
-      if (opp.stage?.name === 'closed_won') {
-        ownerStageCounts[owner].closed_won_count += 1;
-        ownerStageCounts.globalCounts.closed_won_count += 1;
-      } else if (opp.stage?.name === 'closed_lost') {
-        ownerStageCounts[owner].closed_lost_count += 1;
-        ownerStageCounts.globalCounts.closed_lost_count += 1;
-      }
-    }
-  });
-
-  console.log('Owner counts:', ownerStageCounts);
-
-  return ownerStageCounts;
-};
-
-// Function to generate a bar chart from owner counts
-const generateOpportunityStackedBarChart = (
-  ownerCounts: { [owner: string]: { closed_won_count: number; closed_lost_count: number } },
-  globalCounts: { closed_won_count: number; closed_lost_count: number }
-): string => {
-  const width = 400;
-  const height = 400;
-  const canvas = createCanvas(width, height);
-  const ctx = canvas.getContext('2d');
-  const owners = Object.keys(ownerCounts).filter(
-    (owner) => owner !== 'closed_won_count' && owner !== 'closed_lost_count'
-  );
-  const wonCounts = owners.map((owner) => ownerCounts[owner]?.closed_won_count || 0);
-  const lostCounts = owners.map((owner) => ownerCounts[owner]?.closed_lost_count || 0);
-
-  const chartData = {
-    labels: owners,
-    datasets: [
-      {
-        label: 'Won Opportunities',
-        data: wonCounts,
-        backgroundColor: '#4caf50',
-        stack: 'stack1',
-      },
-      {
-        label: 'Lost Opportunities',
-        data: lostCounts,
-        backgroundColor: '#f44336',
-        stack: 'stack1',
-      },
-    ],
-  };
-
-  new Chart(ctx as unknown as ChartItem, {
-    type: 'bar',
-    data: chartData,
-  });
-
-  return canvas.toDataURL();
-};
-
-// Function to get the count of opportunities by owner
-const getOpportunityOwnerCounts = (opportunities: Opportunity[]): { [owner: string]: number } => {
-  const ownerCounts: { [owner: string]: number } = {};
-
-  opportunities.forEach((opp) => {
-    if (opp.stage?.name === 'closed_won') {
-      const owner = opp.owned_by[0]?.full_name.trim().toLowerCase();
-      if (owner) {
-        ownerCounts[owner] = (ownerCounts[owner] || 0) + 1;
-      }
-    }
-  });
-
-  console.log('Owner closed_won counts:', ownerCounts);
-
-  return ownerCounts;
-};
-
-// Function to generate a doughnut chart from owner counts
-const generateDoughnutChart = (ownerCounts: { [owner: string]: number }): string => {
-  const width = 400;
-  const height = 400;
-  const canvas = createCanvas(width, height);
-  const ctx = canvas.getContext('2d');
-
-  const data = {
-    labels: Object.keys(ownerCounts),
-    datasets: [
-      {
-        data: Object.values(ownerCounts),
-        backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56', '#FF5733', '#C70039'],
-      },
-    ],
-  };
-
-  new Chart(ctx as unknown as ChartItem, {
-    type: 'doughnut',
-    data,
-  });
-
-  return canvas.toDataURL();
-};
-
-// Function to create a PDF report
-const createPDFReport = async (
-  beautifiedSummary: string,
-  chartImageBase64_1: string,
-  chartImageBase64_2: string
-): Promise<Uint8Array> => {
-  const pdfDoc = await PDFDocument.create();
-  const pageContent = beautifiedSummary.split('\n');
-  const bodyFontSize = 12;
-  const lineSpacing = 14;
-  const margin = 50;
-  const pageHeight = 800;
-  const pageWidth = 600;
-  const maxContentHeight = pageHeight - 100;
-  let yPosition = maxContentHeight;
-  let currentPage: any = null;
-  let pageNumber = 1;
-
-  const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-  const regularFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
-
-  const addHeaderFooter = (page: any, pageNumber: number, boldFont: any, regularFont: any) => {
-    const headerText = 'Business Opportunities Report';
-    const footerText = `Page ${pageNumber}`;
-
-    page.drawText(headerText, {
-      x: 50,
-      y: 780,
-      font: boldFont,
-      size: 14,
-      color: rgb(0, 0, 0),
-    });
-
-    const footerWidth = regularFont.widthOfTextAtSize(footerText, 10);
-    const footerX = (page.getWidth() - footerWidth) / 2;
-    page.drawText(footerText, {
-      x: footerX,
-      y: 20,
-      font: regularFont,
-      size: 10,
-      color: rgb(0, 0, 0),
-    });
-  };
-
-  const wrapText = (text: string, font: any, maxWidth: number, fontSize: number): string[] => {
-    const words = text.split(' ');
-    const lines: string[] = [];
-    let currentLine = '';
-
-    for (const word of words) {
-      const testLine = currentLine ? `${currentLine} ${word}` : word;
-      const testLineWidth = font.widthOfTextAtSize(testLine, fontSize);
-
-      if (testLineWidth <= maxWidth) {
-        currentLine = testLine;
-      } else {
-        if (currentLine) lines.push(currentLine);
-        currentLine = word;
-      }
-    }
-
-    if (currentLine) lines.push(currentLine);
-    return lines;
-  };
-
-  const createNewPage = () => {
-    const page = pdfDoc.addPage([pageWidth, pageHeight]);
-    yPosition = maxContentHeight;
-    addHeaderFooter(page, pageNumber, boldFont, regularFont);
-    pageNumber += 1;
-    return page;
-  };
-
-  currentPage = createNewPage();
-
-  for (const line of pageContent) {
-    if (line.trim() === '') {
-      yPosition -= lineSpacing * 0.5;
-      continue;
-    }
-
-    if (yPosition - lineSpacing < margin) {
-      currentPage = createNewPage();
-    }
-
-    const isHeading = /^##/.test(line) || /^###/.test(line);
-    const font = isHeading ? boldFont : regularFont;
-    const wrappedLines = wrapText(line, font, pageWidth - 2 * margin, bodyFontSize);
-
-    for (const wrappedLine of wrappedLines) {
-      currentPage.drawText(wrappedLine, {
-        x: margin,
-        y: yPosition,
-        font,
-        size: bodyFontSize,
-        color: rgb(0, 0, 0),
-      });
-      yPosition -= lineSpacing;
-    }
-  }
-  const base64Data_1 = chartImageBase64_1.replace(/^data:image\/png;base64,/, '');
-  const base64Data_2 = chartImageBase64_2.replace(/^data:image\/png;base64,/, '');
-  const doughnutChart_1 = await pdfDoc.embedPng(Buffer.from(base64Data_1, 'base64'));
-  const barChart_1 = await pdfDoc.embedPng(Buffer.from(base64Data_2, 'base64'));
-
-  if (yPosition - 200 < margin) {
-    currentPage = createNewPage();
-  }
-
-  currentPage.drawImage(doughnutChart_1, {
-    x: 75,
-    y: yPosition - 200,
-    width: 400,
-    height: 200,
-  });
-
-  yPosition -= 200;
-
-  if (yPosition - 200 < margin) {
-    currentPage = createNewPage();
-  }
-
-  currentPage.drawImage(barChart_1, {
-    x: 75,
-    y: yPosition - 200,
-    width: 400,
-    height: 200,
-  });
-  return await pdfDoc.save();
-};
-
-const beautifySummary = (summary: string): string => {
-  const cleanedSummary = summary
-    .replace(/(#+\s?)/g, '')
-    .replace(/\*\*(.*?)\*\*/g, '$1')
-    .replace(/\*(.*?)\*/g, '$1')
-    .replace(/__([^_]+)__/g, '$1')
-    .replace(/_(.*?)_/g, '$1')
-    .replace(/`([^`]+)`/g, '$1')
-    .replace(/-\s+/g, '')
-    .replace(/\n{2,}/g, '\n\n')
-    .trim();
-
-  return cleanedSummary;
-};
-
-async function getChannelIdByName(channelName: string, slackClient: WebClient) {
-  try {
-    const response = await slackClient.conversations.list();
-    if (response.ok) {
-      const channel = response.channels?.find((c) => c.name === channelName);
-      if (channel) {
-        return channel.id;
-      } else {
-        throw new Error(`Channel "${channelName}" not found.`);
-      }
-    } else {
-      throw new Error('Failed to fetch channel list.');
-    }
-  } catch (error) {
-    console.error('Error fetching channel ID:', error);
-    throw error;
-  }
-}
-
-async function uploadFileToSlack(pdfBytes: Uint8Array, channelName: string, slackClient: WebClient) {
-  try {
-    const channelId = await getChannelIdByName(channelName, slackClient);
-    if (!channelId) {
-      throw new Error(`Channel ID for ${channelName} not found.`);
-    }
-    await slackClient.conversations.join({ channel: channelId });
-    const buffer = Buffer.from(pdfBytes);
-    const response = await slackClient.files.uploadV2({
-      channel_id: channelId,
-      file: buffer,
-      filename: 'Business_Opportunities_Report.pdf',
-      title: 'Business Opportunities Report',
-    });
-    // console.log('File uploaded:', response);
-  } catch (error: any) {
-    console.error('Error uploading file:', error.response?.data || error.message);
-    throw error;
-  }
-}
-
 const generate_report = async (event: any) => {
   try {
     // Validate inputs
@@ -541,16 +114,20 @@ const generate_report = async (event: any) => {
       token: devrevPAT,
     });
 
+    // Get defaults from global values
+    const defaultChannel = event.input_data.global_values.default_slack_channel;
+    const defaultTimeframe = event.input_data.global_values.default_timeframe;
+
     // Parse input
     const commandParams = event.payload['parameters'];
-    if (!commandParams) {
-      throw new Error('No parameters provided in the event payload.');
-    }
-    const parsedInput = parseInput(commandParams.trim());
-    const { channel, timeParams, color } = parsedInput;
+
+    const parsedInput = parseInput(commandParams.trim() || '', {
+      channel: defaultChannel,
+      timeframe: defaultTimeframe,
+    });
+    const { channel, timeParams } = parsedInput;
     const timeframe = timeParams.totalHours;
-    console.info('Timeframe:', timeframe, 'Channel:', channel, 'Color:', color);
-    console.error('Timeframe:', timeframe, 'Channel:', channel, 'Color:', color);
+    console.info('Timeframe:', timeframe, 'Channel:', channel);
     if (timeframe <= 0) {
       throw new Error('Invalid timeframe provided.');
     }
@@ -569,8 +146,7 @@ const generate_report = async (event: any) => {
     console.log(beautifiedSummary);
 
     // Initialize the Slack client
-    const slackClient = new WebClient(slackToken);
-    const isChannelValid = await verifyChannel(channel, slackClient);
+    const isChannelValid = await verifyChannel(channel, slackToken);
     if (!isChannelValid) {
       throw new Error(`The channel ${channel} does not exist or is not accessible.`);
     }
@@ -583,10 +159,9 @@ const generate_report = async (event: any) => {
     const pdfBytes = await createPDFReport(beautifiedSummary, chartImageBase64_1, chartImageBase64_2);
 
     // Upload the generated PDF to Slack
-    const slackResponse = await uploadFileToSlack(pdfBytes, channel, slackClient);
-    // console.log('Slack response:', slackResponse);
+    const slackResponse = await uploadFileToSlack(pdfBytes, channel, slackToken);
   } catch (error) {
-    console.error('ERROR IN GENERATE_REPORT FUNCTION !!!', error);
+    console.error('Error processing the main function', error);
     throw error;
   }
 };

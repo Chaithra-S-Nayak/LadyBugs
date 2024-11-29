@@ -18,6 +18,23 @@ keyrings:
       types:
         - snap_in_secret
 
+inputs:
+  organization:
+    - name: default_slack_channel
+      description: Default Slack channel to post summaries.
+      field_type: text
+      is_required: false
+      default_value: "general"
+      ui:
+        display_name: Default Slack Channel
+    - name: default_timeframe
+      description: Default timeframe for generating reports.
+      field_type: text
+      is_required: false
+      default_value: "7d"
+      ui:
+        display_name: Default Timeframe
+
 functions:
   - name: generate_report
     description: Function to trigger on /report command
@@ -32,5 +49,5 @@ commands:
           - opportunity
           - issue
           - ticket
-    usage_hint: "[channel] [nd] [nh] [color]"
+    usage_hint: "[channel] [nd] [nh]"
     function: generate_report
