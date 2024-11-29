@@ -1,4 +1,3 @@
-import { betaSDK, client } from '@devrev/typescript-sdk';
 import { generateSummary } from './llm_utils';
 import {
   beautifySummary,
@@ -40,15 +39,11 @@ export interface Opportunity {
   id: string;
 }
 
-const parseTimeParameters = (timeString: string): TimeParams => {
+const parseTimeParameters = async (timeString: string, devrevSDK: any, source_id: string): Promise<TimeParams> => {
   const daysMatch = timeString.match(/(\d+)d/);
   const hoursMatch = timeString.match(/(\d+)h/);
   const days = daysMatch ? parseInt(daysMatch[1]) : 0;
   const hours = hoursMatch ? parseInt(hoursMatch[1]) : 0;
-
-  if (!days && !hours) {
-    throw new Error('Invalid time format. Use format: [Nd][Nh] (e.g. 1d 2h, 24h, 2d)');
-  }
 
   return {
     days: days || undefined,
@@ -57,13 +52,15 @@ const parseTimeParameters = (timeString: string): TimeParams => {
   };
 };
 
-const parseInput = (
+const parseInput = async (
   input: string,
-  defaults: { channel: string; timeframe: string }
-): {
+  defaults: { channel: string; timeframe: string },
+  devrevSDK: any,
+  source_id: string
+): Promise<{
   channel: string;
   timeParams: TimeParams;
-} => {
+}> => {
   const parts = input.trim().split(' ');
 
   // Use defaults if parts are missing
@@ -74,7 +71,7 @@ const parseInput = (
 
   return {
     channel,
-    timeParams: parseTimeParameters(timeframe),
+    timeParams: await parseTimeParameters(timeframe, devrevSDK, source_id),
   };
 };
 
@@ -123,11 +120,17 @@ const generate_report = async (event: any) => {
     // Parse input
     const commandParams = event.payload['parameters'];
 
-    const parsedInput = parseInput(commandParams.trim() || '', {
-      channel: defaultChannel,
-      timeframe: defaultTimeframe,
-    });
-    const { channel, timeParams } = parsedInput;
+    const parsedInput = await parseInput(
+      commandParams.trim() || '',
+      {
+        channel: defaultChannel,
+        timeframe: defaultTimeframe,
+      },
+      devrevSDK,
+      sourceId
+    );
+
+    const { channel, timeParams } = await parsedInput;
     const timeframe = timeParams.totalHours;
     console.info('Timeframe:', timeframe, 'Channel:', channel);
     if (timeframe <= 0) {
