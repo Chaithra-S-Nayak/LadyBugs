@@ -1,48 +1,3 @@
-# version: "1"
-# name: "Opportunity Summarizer"
-# description: "Generate a summary report of opportunities within the specified timeframe."
-
-# keyrings:
-#   organization:
-#     - name: slack_oauth_token
-#       display_name: Slack OAuth Token
-#       description: OAuth token to authenticate Slack API requests for user authentication, channels, and messaging.
-#       types:
-#         - secrets
-#     - name: llm_api_token
-#       display_name: LLM API Token
-#       description: Token to authenticate with the shared LLM model.
-#       types:
-#         - secrets
-
-# service_account:
-#   display_name: DevRev Bot
-
-# inputs:
-#   organization:
-#     - name: default_slack_channel
-#       description: Default Slack channel to post summaries.
-#       field_type: text
-#       is_required: false
-#       default_value: "#general"
-#       ui:
-#         display_name: Default Slack Channel
-
-# functions:
-#   - name: generate_report
-#     description: function to trigger on /report command
-
-# commands:
-#   - name: report
-#     namespace: devrev
-#     description: Create a summary report of opportunities with charts.
-#     surfaces:
-#       - surface: discussions
-#         object_types:
-#           - opportunity
-#     usage_hint: "[timeframe] [slack_channel] [chart_color]"
-#     function: generate_report
-
 version: "2"
 name: "Opportunity Summarizer"
 description: "Generate a summary report of opportunities within the specified timeframe."
@@ -66,10 +21,6 @@ keyrings:
 functions:
   - name: generate_report
     description: Function to trigger on /report command
-    config:
-      runtime:
-        max_retries: 2 # number of retries before failing the event
-        min_interval: 120 #
 
 commands:
   - name: report
@@ -79,10 +30,7 @@ commands:
       - surface: discussions
         object_types:
           - opportunity
+          - issue
+          - ticket
     usage_hint: "[channel] [nd] [nh] [color]"
-    function: generate_report
-
-snap_kit_actions:
-  - name: slack_message_status
-    description: Snap kit action for showing the status of the Slack message
     function: generate_report

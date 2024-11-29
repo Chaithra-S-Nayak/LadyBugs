@@ -289,23 +289,7 @@ const generateOpportunityStackedBarChart = (
       },
     ],
   };
-  const options = {
-    responsive: true,
-    scales: {
-      x: {
-        beginAtZero: true,
-      },
-      y: {
-        beginAtZero: true,
-        stacked: true,
-      },
-    },
-    plugins: {
-      legend: {
-        position: 'top',
-      },
-    },
-  };
+
   new Chart(ctx as unknown as ChartItem, {
     type: 'bar',
     data: chartData,
@@ -550,10 +534,6 @@ const generate_report = async (event: any) => {
     const slackToken = event.input_data.keyrings['slack_oauth_token'];
     const llmApiKey = event.input_data.keyrings['llm_api_token'];
     const endpoint = event.execution_metadata.devrev_endpoint;
-    if (!devrevPAT) console.error('devrevPAT is not defined');
-    if (!slackToken) console.error('slackToken is not defined');
-    if (!llmApiKey) console.error('llmApiKey is not defined');
-    if (!endpoint) console.error('endpoint is not defined');
 
     // Initialize DevRev SDK
     const devrevSDK = client.setupBeta({
@@ -613,11 +593,7 @@ const generate_report = async (event: any) => {
 
 export const run = async (events: any[]) => {
   for (const event of events) {
-    try {
-      await generate_report(event);
-    } catch (error) {
-      console.error('RUN FUNCTION IS THROWING ERRROR', error);
-    }
+    await generate_report(event);
   }
 };
 
