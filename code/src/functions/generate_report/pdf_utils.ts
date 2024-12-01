@@ -2,7 +2,6 @@ import { createCanvas } from 'canvas';
 import Chart, { ChartItem } from 'chart.js/auto';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { Opportunity } from './index';
-
 export const beautifySummary = (summary: string): string => {
   const cleanedSummary = summary
     .replace(/(#+\s?)/g, '')
@@ -14,14 +13,11 @@ export const beautifySummary = (summary: string): string => {
     .replace(/-\s+/g, '')
     .replace(/\n{2,}/g, '\n\n')
     .trim();
-
   return cleanedSummary;
 };
-
 // Function to get the count of opportunities by owner
 export const getOpportunityOwnerCounts = (opportunities: Opportunity[]): { [owner: string]: number } => {
   const ownerCounts: { [owner: string]: number } = {};
-
   opportunities.forEach((opp) => {
     if (opp.stage?.name === 'closed_won') {
       const owner = opp.owned_by[0]?.full_name.trim().toLowerCase();
@@ -30,20 +26,17 @@ export const getOpportunityOwnerCounts = (opportunities: Opportunity[]): { [owne
       }
     }
   });
-
   console.log('Owner closed_won counts:', ownerCounts);
-
   return ownerCounts;
 };
-
-export const generateDoughnutChart = (ownerCounts: { [owner: string]: number }): string => {
+export // Function to generate a doughnut chart from owner counts
+const generateDoughnutChart = (ownerCounts: { [owner: string]: number }): string => {
   const width = 400;
   const height = 400;
   const canvas = createCanvas(width, height);
   const ctx = canvas.getContext('2d');
-
   const data = {
-    labels: Object.keys(ownerCounts), // Ensure labels are present
+    labels: Object.keys(ownerCounts),
     datasets: [
       {
         data: Object.values(ownerCounts),
@@ -51,22 +44,12 @@ export const generateDoughnutChart = (ownerCounts: { [owner: string]: number }):
       },
     ],
   };
-
   new Chart(ctx as unknown as ChartItem, {
     type: 'doughnut',
     data,
-    options: {
-      plugins: {
-        legend: {
-          display: true, // Ensure the legend is displayed
-        },
-      },
-    },
   });
-
   return canvas.toDataURL();
 };
-
 export // Function to get opportunity owner counts by stage
 const getOpportunityOwnerCountsByStage = (
   opportunities: Opportunity[]
@@ -84,7 +67,6 @@ const getOpportunityOwnerCountsByStage = (
       closed_lost_count: 0,
     },
   };
-
   opportunities.forEach((opp) => {
     const owner = opp.owned_by[0]?.full_name.trim().toLowerCase();
     if (owner) {
@@ -92,7 +74,6 @@ const getOpportunityOwnerCountsByStage = (
       if (!ownerStageCounts[owner]) {
         ownerStageCounts[owner] = { closed_won_count: 0, closed_lost_count: 0 };
       }
-
       // Update the counts based on the opportunity stage
       if (opp.stage?.name === 'closed_won') {
         ownerStageCounts[owner].closed_won_count += 1;
@@ -103,9 +84,7 @@ const getOpportunityOwnerCountsByStage = (
       }
     }
   });
-
   console.log('Owner counts:', ownerStageCounts);
-
   return ownerStageCounts;
 };
 // Function to generate a bar chart from owner counts
@@ -122,9 +101,8 @@ export const generateOpportunityStackedBarChart = (
   );
   const wonCounts = owners.map((owner) => ownerCounts[owner]?.closed_won_count || 0);
   const lostCounts = owners.map((owner) => ownerCounts[owner]?.closed_lost_count || 0);
-
   const chartData = {
-    labels: owners, // Ensure labels are present
+    labels: owners,
     datasets: [
       {
         label: 'Won Opportunities',
@@ -140,40 +118,10 @@ export const generateOpportunityStackedBarChart = (
       },
     ],
   };
-
-  const options = {
-    responsive: true,
-    scales: {
-      x: {
-        beginAtZero: true,
-        title: {
-          display: true,
-          text: 'Owners', // Label for the x-axis
-        },
-      },
-      y: {
-        beginAtZero: true,
-        stacked: true,
-        title: {
-          display: true,
-          text: 'Counts', // Label for the y-axis
-        },
-      },
-    },
-    plugins: {
-      legend: {
-        display: true, // Ensure the legend is displayed
-        position: 'top' as const,
-      },
-    },
-  };
-
   new Chart(ctx as unknown as ChartItem, {
     type: 'bar',
     data: chartData,
-    options: options,
   });
-
   return canvas.toDataURL();
 };
 export // Function to create a PDF report
@@ -193,14 +141,11 @@ const createPDFReport = async (
   let yPosition = maxContentHeight;
   let currentPage: any = null;
   let pageNumber = 1;
-
   const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const regularFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
-
   const addHeaderFooter = (page: any, pageNumber: number, boldFont: any, regularFont: any) => {
     const headerText = 'Business Opportunities Report';
     const footerText = `Page ${pageNumber}`;
-
     page.drawText(headerText, {
       x: 50,
       y: 780,
@@ -208,7 +153,6 @@ const createPDFReport = async (
       size: 14,
       color: rgb(0, 0, 0),
     });
-
     const footerWidth = regularFont.widthOfTextAtSize(footerText, 10);
     const footerX = (page.getWidth() - footerWidth) / 2;
     page.drawText(footerText, {
@@ -219,16 +163,13 @@ const createPDFReport = async (
       color: rgb(0, 0, 0),
     });
   };
-
   const wrapText = (text: string, font: any, maxWidth: number, fontSize: number): string[] => {
     const words = text.split(' ');
     const lines: string[] = [];
     let currentLine = '';
-
     for (const word of words) {
       const testLine = currentLine ? `${currentLine} ${word}` : word;
       const testLineWidth = font.widthOfTextAtSize(testLine, fontSize);
-
       if (testLineWidth <= maxWidth) {
         currentLine = testLine;
       } else {
@@ -236,11 +177,9 @@ const createPDFReport = async (
         currentLine = word;
       }
     }
-
     if (currentLine) lines.push(currentLine);
     return lines;
   };
-
   const createNewPage = () => {
     const page = pdfDoc.addPage([pageWidth, pageHeight]);
     yPosition = maxContentHeight;
@@ -248,23 +187,18 @@ const createPDFReport = async (
     pageNumber += 1;
     return page;
   };
-
   currentPage = createNewPage();
-
   for (const line of pageContent) {
     if (line.trim() === '') {
       yPosition -= lineSpacing * 0.5;
       continue;
     }
-
     if (yPosition - lineSpacing < margin) {
       currentPage = createNewPage();
     }
-
     const isHeading = /^##/.test(line) || /^###/.test(line);
     const font = isHeading ? boldFont : regularFont;
     const wrappedLines = wrapText(line, font, pageWidth - 2 * margin, bodyFontSize);
-
     for (const wrappedLine of wrappedLines) {
       currentPage.drawText(wrappedLine, {
         x: margin,
@@ -280,24 +214,19 @@ const createPDFReport = async (
   const base64Data_2 = chartImageBase64_2.replace(/^data:image\/png;base64,/, '');
   const doughnutChart_1 = await pdfDoc.embedPng(Buffer.from(base64Data_1, 'base64'));
   const barChart_1 = await pdfDoc.embedPng(Buffer.from(base64Data_2, 'base64'));
-
   if (yPosition - 200 < margin) {
     currentPage = createNewPage();
   }
-
   currentPage.drawImage(doughnutChart_1, {
     x: 75,
     y: yPosition - 200,
     width: 400,
     height: 200,
   });
-
   yPosition -= 200;
-
   if (yPosition - 200 < margin) {
     currentPage = createNewPage();
   }
-
   currentPage.drawImage(barChart_1, {
     x: 75,
     y: yPosition - 200,
