@@ -6,11 +6,18 @@ interface OpenAIMessage {
   content: string;
 }
 
-export const generateSummary = async (opportunities: Opportunity[], llmApiKey: string): Promise<string> => {
+export const generateSummary = async (
+  opportunities: Opportunity[],
+  timeframe: number,
+  llmApiKey: string
+): Promise<string> => {
   try {
     const openai = new OpenAI({
       apiKey: llmApiKey,
     });
+
+    // Fomat the time
+    const timeframeString = timeframe >= 24 ? `${Math.floor(timeframe / 24)} days` : `${timeframe} hours`;
 
     // Format data for OpenAI
     const opportunityDetails = opportunities.map((opp) => ({
@@ -62,12 +69,9 @@ export const generateSummary = async (opportunities: Opportunity[], llmApiKey: s
       },
       {
         role: 'user',
-        content: `Here is a summary request for closed-won opportunities:
-
-Opportunities:
-${JSON.stringify(opportunityDetails, null, 2)}
-
-Please extract the following information from each opportunity which can be present in the body:
+        content: `This report summarizes the closed-won opportunities in the last ${timeframeString}.
+        \n\nOpportunities:\n${JSON.stringify(opportunityDetails, null, 2)}
+        \n\nPlease extract the following information from each opportunity which can be present in the body:
 Account name
 Revenue from the opportunity
 Opportunity owners (sales reps)

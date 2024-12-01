@@ -21,7 +21,6 @@ export const beautifySummary = (summary: string): string => {
 // Function to get the count of opportunities by owner
 export const getOpportunityOwnerCounts = (opportunities: Opportunity[]): { [owner: string]: number } => {
   const ownerCounts: { [owner: string]: number } = {};
-
   opportunities.forEach((opp) => {
     if (opp.stage?.name === 'closed_won') {
       const owner = opp.owned_by[0]?.full_name.trim().toLowerCase();
@@ -30,9 +29,7 @@ export const getOpportunityOwnerCounts = (opportunities: Opportunity[]): { [owne
       }
     }
   });
-
   console.log('Owner closed_won counts:', ownerCounts);
-
   return ownerCounts;
 };
 
@@ -44,18 +41,18 @@ const generateDoughnutChart = (ownerCounts: { [owner: string]: number }): string
   const ctx = canvas.getContext('2d');
 
   const data = {
-    labels: Object.keys(ownerCounts),
+    labels: Object.keys(ownerCounts), // Labels for the chart
     datasets: [
       {
-        data: Object.values(ownerCounts),
-        backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56', '#FF5733', '#C70039'],
+        data: Object.values(ownerCounts), // Values corresponding to the labels
+        backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56', '#FF5733', '#C70039'], // Colors for each segment
       },
     ],
   };
 
   new Chart(ctx as unknown as ChartItem, {
     type: 'doughnut',
-    data,
+    data: data,
   });
 
   return canvas.toDataURL();
@@ -117,7 +114,6 @@ export const generateOpportunityStackedBarChart = (
   );
   const wonCounts = owners.map((owner) => ownerCounts[owner]?.closed_won_count || 0);
   const lostCounts = owners.map((owner) => ownerCounts[owner]?.closed_lost_count || 0);
-
   const chartData = {
     labels: owners,
     datasets: [
@@ -135,12 +131,10 @@ export const generateOpportunityStackedBarChart = (
       },
     ],
   };
-
   new Chart(ctx as unknown as ChartItem, {
     type: 'bar',
     data: chartData,
   });
-
   return canvas.toDataURL();
 };
 

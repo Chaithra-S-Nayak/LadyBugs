@@ -166,7 +166,7 @@ const generate_report = async (event: any) => {
       console.error(`Error while creating timeline entry: ${postResp.message}`);
     }
     // Generate a summary of the opportunities
-    const summary = await generateSummary(opportunities, llmApiKey);
+    const summary = await generateSummary(opportunities, timeframe, llmApiKey);
 
     // Beautify the summary
     const beautifiedSummary = beautifySummary(summary);
@@ -199,7 +199,7 @@ const generate_report = async (event: any) => {
     const pdfBytes = await createPDFReport(beautifiedSummary, chartImageBase64_1, chartImageBase64_2);
 
     // Upload the generated PDF to Slack
-    postResp = await devrevSDK.postTextMessageWithVisibilityTimeout(sourceId, `Connecting with Slack..`, 1);
+    postResp = await devrevSDK.postTextMessageWithVisibilityTimeout(sourceId, `Connecting with Slack...`, 1);
     if (!postResp.success) {
       console.error(`Error while creating timeline entry: ${postResp.message}`);
     }
