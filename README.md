@@ -1,155 +1,111 @@
-## DevRev Snaps TypeScript Template
+# Opportunity Summarizer
 
-This repository contains a template for the functions that can be deployed as
-part of Snap-Ins.
+## Overview
 
-For reference on snap-ins, refer to the [documentation](https://github.com/devrev/snap-in-docs).
+The DevRev **Opportunity Summarizer** Project is designed to generate summary reports of opportunities within a specified timeframe and post these summaries to a Slack channel. The project interacts with the DevRev API to fetch opportunities, uses an LLM to generate summaries, and utilizes the Slack API to post messages
 
-### Getting started with the template
+## Features
 
-1. Create a new repository using this template.
-2. In the new repository, you can add functions at the path `src/functions` where the folder name corresponds to the function name in your manifest file.
-3. Ensure to include each new function in the file named "src/function-factory.ts".
+- Automated reporting of closed-won opportunities using GPT-4o.
+- Generates PDF reports with charts and analytics.
+- Posts reports directly to Slack channels.
+- Supports custom timeframes in days (`d`) and hours (`h`).
+- Default settings: Slack channel (`general`) and timeframe (`7d`).
+- Simple `/report` command for quick report generation.
+- Integrates DevRev API, GPT-4o, and Slack API for seamless workflow.
+- Provides a detailed timeline for each step in the process.
 
-### Testing locally
+## Prerequisites
 
-To test your code locally, add test events under 'src/fixtures' following the example event provided. Additionally, you can include keyring values in the event payload to test API calls.```
+- DevRev Organization account
+- Slack workspace and API token
+- GPT-4o API token
 
-After adding the event, execute the following commands to test your code:
+## Installation
 
-```
-npm install
-npm run start -- --functionName=on_work_creation --fixturePath=on_work_created_event.json
-```
-
-### Adding external dependencies
-
-You can also add dependencies on external packages to package.json under the “dependencies” key. These dependencies will be made available to your function at runtime and during testing.
-
-### Linting
-
-To check for lint errors, run the following command:
+1. **Clone the Repository**
 
 ```bash
-npm run lint
+git clone https://github.com/Chaithra-S-Nayak/LadyBugs.git
+cd LadyBugs/code
 ```
 
-To automatically fix fixable lint errors, run:
+2.  **Install Dependencies**
 
 ```bash
-npm run lint:fix
+  npm install
 ```
 
-### Deploying Snap-ins
+### Authenticate and Deploy the Snap-in
 
-Once you are done with the testing, run the following commands to deploy your snap-in:
+1. **Authenticate with DevRev**
 
-1. Authenticate to devrev CLI, run the following command:
-
-```
-devrev profiles authenticate --org <devorg name> --usr <user email>
+```bash
+devrev profiles authenticate -o <dev-org-slug> -u <your email@yourdomain.com>
 ```
 
-2. To create a snap_in_version, run the following command:
+2.  **Create a Snap-in Package**
 
-```
-devrev snap_in_version create-one --path <template path> --create-package
-```
-
-3. Draft the snap_in, run the following command:
-
-```
-devrev snap_in draft
+```bash
+ devrev snap_in_package create-one --slug my-first-snap-in | jq .
 ```
 
-4. To update the snap-in, run the following command:
+3.  **Create a Snap-in Version**
 
-```
-devrev snap_in update
-```
-
-5. Activate the snap_in
-
-```
-devrev snap_in activate
+```bash
+  devrev snap_in_version create-one --path .
 ```
 
-### Testing Snap-in changes locally
+4.  **Draft the Snap-in**
 
-### Setting up the server
-
-To test out changes in snap-in locally, developers can create a snap-in version in test mode.
-A snap-in version created in test mode enables developers to specify a public HTTP URL to receive events from DevRev. This makes for
-quick code changes on the local machine without needing to repeatedly deploy the snap-in again for testing the changes.
-
-To test out a snap-in version locally, follow the below steps:
-
-1. Run a server locally to ingest events from DevRev. The `port` parameter is optional. If not set, the server starts default on `8000`.
-
-```
-npm run test:server -- --port=<PORT>
+```bash
+   devrev snap_in draft
 ```
 
-2. Expose the local port as a publicly available URL. We recommend using [`ngrok`](https://ngrok.com/download) since it is free and easy to set up. The command for running ngrok tunnelling on port `8000`:
+## Configure and Install the Snap-In
 
-```
-ngrok http 8000
-```
+1. **Access DevRev App**  
+   Open the [DevRev App](https://app.devrev.ai) in your browser.
 
-This returns a public HTTP URL.
+2. **Locate Your Snap-In**
 
-3. Create a snap-in version with the `testing-url` flag set
+   - Navigate to the Snap-Ins section in the app.
+   - Your deployed Snap-In should be visible in the waiting for installation state.
 
-```
-devrev snap_in_version create-one --path <template path> --create-package --testing-url <HTTP_URL>
-```
+3. **Enter Installation Configuration**  
+   When prompted, provide the following values:
+   - **SLACK-TOKEN**: Slack API token.
+   - **LLM-TOKEN**: GPT-4o API token.
+   - **Default Slack Channel Name**: A default channel name for notifications.
+   - **Default Timeframe**: A default timeframe for your application.
 
-Here, `HTTP_URL` is the publicly available URL from Step 2. The URL should start with `http` or `https`
+## User Guidelines
 
-4. Once the snap-in version is ready, create a snap-in, update and activate it.
+1. **Navigate to the Discussions Tab**
 
-```
-devrev snap_in draft
-```
+   - Open the **Discussions** tab in the **Opportunity** section of the DevRev app.
 
-Update the snap-in through UI or using the CLI:
+2. **Enter the Command**
 
-```
-devrev snap_in update
-```
+   - Use the `/report` command followed by the channel name and timeframe.
+   - The timeframe should be in the format of Nd Nh , where N is a number, d stands for days, and h stands for hours.
+   - Example: `/report sales 2d 3h` (for the last 2 days and 3 hours).
 
-Activate the snap-in through UI or through the CLI command:
+3. **Default Values**
+   - If the channel name, timeframe, or both are not specified, the snap-in uses default values configured during installation:
+     - **Default Slack Channel**: `general`
+     - **Default Timeframe**: `7d` (7 days)
 
-```
-devrev snap_in activate
-```
+### Example Output
 
-### Receiving events locally
+View a sample generated report [here](https://drive.google.com/file/d/1fiiPBIramUid_88iGrqw1SDFKFVyayur/view?usp=sharing).
 
-After the snap-in has been activated, it can receive events locally from DevRev as a
-snap-in would. If the snap-in was listening to `work_created` event type, then creating a
-new work-item would send the event to the local server.
+## About the Team
 
-If utilizing ngrok, accessing the ngrok UI is possible by opening http://127.0.0.1:4040/ in the browser. This interface offers a neat way to review the list of requests and replay them if necessary.
+This project was developed by **Team LadyBugs** from NMAM Institute of Technology, Nitte, Karkala.
 
-The service account token included with the request is valid for only 30 minutes. Therefore, attempting to call the DevRev API with that token for events older than this timeframe will result in a '401 Unauthorized' error.
+**Team Members:**
 
-### Updating manifest or the URL
-
-The code can be changed without the need to create a snap-in version or redeploy the snap-in. On any change to the
-`src` folder, the server restarts with the updated changes. However, on [patch compatible](https://developer.devrev.ai/snap-in-development/upgrade-snap-ins#version-compatibility) updates to the manifest or the testing URL, we can `upgrade` the snap-in version.
-
-```
-devrev snap_in_version upgrade --manifest <PATH_TO_MANIFEST> --testing-url <UPDATED_URL>
-```
-
-In case of non-patch compatible updates, the `force` flag can be used to upgrade the version. However this will delete any
-existing snap-ins that have been created from this version.
-
-```
-devrev snap_in_version upgrade --force --manifest <PATH_TO_MANIFEST> --testing-url <UPDATED_URL>
-```
-
-Do note that manifest must always be provided when upgrading a snap-in version.
-
---------------------------------
+- Bhavya Nayak (NNM22CS040) - [GitHub](https://github.com/BhavyaNayak04)
+- Chaithra S Nayak (NNM22CC011) - [GitHub](https://github.com/Chaithra-S-Nayak)
+- Rashmi N (NNM22AD043) - [GitHub](https://github.com/nrashmi06)
